@@ -1,0 +1,128 @@
+{
+  "version": "1.0.0",
+  "_tuning_notes": "阈值基于真实 CSV 分布调优（JKUAT 站，2026-08-28 ~ 2026-09-15，1 分钟采样，共 3 个时段约 21000 行）：temp_sht 11.8~29.5°C，humidity_sht 30~95%，wind_gust 最高 15.8 m/s（平均风速仅 0~3 m/s），10 天累计降雨仅 0.4 mm（干季）。因此干季规则在本数据集上会稳定触发；heat/wet_bulb 等字段与 temp_sht 高度相关，暂不重复计分。",
+  "risk_levels": {
+    "low_max": 29,
+    "medium_max": 59
+  },
+  "features": {
+    "rain_day_mm": 1.0
+  },
+  "rules": [
+    {
+      "id": "dry_72h",
+      "scope": "stress",
+      "weight": 25,
+      "conditions": [
+        { "feature": "rainfall_72h_mm", "op": "<=", "value": 2.0 }
+      ],
+      "description_zh": "过去 72 小时累计降雨偏低（持续干燥条件）",
+      "recommendations": {
+        "residents": "评估非必要用水，考虑安全储水",
+        "farmers": "复核灌溉安排与土壤实际墒情，优先遵循当地农业指导",
+        "managers": "关注持续干燥趋势，考虑发布社区节水提醒"
+      }
+    },
+    {
+      "id": "dry_7d_baseline",
+      "scope": "stress",
+      "weight": 10,
+      "conditions": [
+        { "feature": "rain_days_7d", "op": "<=", "value": 1 }
+      ],
+      "description_zh": "近 7 天有雨天数偏少（滚动降雨低于近期本地基线）",
+      "recommendations": {
+        "residents": "关注储水水位，避免用水浪费",
+        "farmers": "评估近期灌溉需求，避开中午高温时段浇水",
+        "managers": "检查社区水源与储水设施状态"
+      }
+    },
+    {
+      "id": "hot_and_dry",
+      "scope": "stress",
+      "weight": 25,
+      "conditions": [
+        { "feature": "temp_max_24h_c", "op": ">=", "value": 30.0 },
+        { "feature": "humidity_min_24h_pct", "op": "<=", "value": 40.0 }
+      ],
+      "description_zh": "高温叠加低湿度，蒸发条件强",
+      "recommendations": {
+        "residents": "减少高温时段的户外用水，改在清晨或傍晚浇灌",
+        "farmers": "优先在清晨/傍晚灌溉，覆盖土壤以减少蒸发",
+        "managers": "提醒社区高温时段合理安排用水"
+      }
+    },
+    {
+      "id": "hot_exposure",
+      "scope": "stress",
+      "weight": 10,
+      "conditions": [
+        { "feature": "temp_max_24h_c", "op": ">=", "value": 32.0 }
+      ],
+      "description_zh": "过去 24 小时出现高温",
+      "recommendations": {
+        "residents": "高温时段减少非必要用水",
+        "farmers": "关注作物与牲畜的饮水需求",
+        "managers": "关注供水设施在高温期的负荷"
+      }
+    },
+    {
+      "id": "windy_and_hot",
+      "scope": "stress",
+      "weight": 10,
+      "conditions": [
+        { "feature": "wind_gust_max_24h_ms", "op": ">=", "value": 10.0 },
+        { "feature": "temp_max_24h_c", "op": ">=", "value": 28.0 }
+      ],
+      "description_zh": "强阵风叠加较高气温，蒸发暴露进一步增加",
+      "recommendations": {
+        "residents": "检查露天储水容器是否加盖，减少蒸发与灰尘污染",
+        "farmers": "大风高温时段避免喷灌，减少蒸发损耗",
+        "managers": "关注储水设施在大风天气下的损耗"
+      }
+    },
+    {
+      "id": "rain_burst_1h",
+      "scope": "burst",
+      "weight": 0,
+      "conditions": [
+        { "feature": "rainfall_1h_mm", "op": ">=", "value": 5.0 }
+      ],
+      "description_zh": "过去 1 小时降雨突增（独立的储水/排水准备提醒，不计入用水压力分数）",
+      "recommendations": {
+        "residents": "检查屋顶集水与储水容器，做好接水准备",
+        "farmers": "检查田间排水，防止短时积水",
+        "managers": "检查排水通道与储水设施，提醒社区防短时强降雨"
+      }
+    }
+  ],
+  "confidence": {
+    "coverage_penalty": 0.3,
+    "invalid_penalty": 0.5,
+    "completeness_penalty": 0.4,
+    "staleness_warn_minutes": 120,
+    "staleness_penalty_per_hour": 0.1,
+    "staleness_penalty_max": 0.5,
+    "staleness_hard_minutes": 720,
+    "staleness_hard_cap": 0.3,
+    "critical_feature_penalty": 0.15,
+    "critical_features": ["rainfall_24h_mm", "rainfall_72h_mm"]
+  },
+  "level_recommendations": {
+    "Low": {
+      "residents": "当前用水压力风险较低，维持日常用水习惯即可",
+      "farmers": "可按常规安排灌溉，留意后续天气变化",
+      "managers": "暂无需额外行动，保持监测"
+    },
+    "Medium": {
+      "residents": "建议开始节约用水并确认储水充足",
+      "farmers": "建议优化灌溉时间，优先保障关键作物",
+      "managers": "建议向社区发布节水提示，检查储水设施"
+    },
+    "High": {
+      "residents": "建议立即节水并做好储水准备，关注当地管理部门通知",
+      "farmers": "建议暂缓非关键灌溉，优先保障饮水与关键作物",
+      "managers": "建议发布社区告警，优先检查供水与储水设施"
+    }
+  }
+}
