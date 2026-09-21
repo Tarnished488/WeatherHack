@@ -8,6 +8,9 @@ backend/
 │   ├── db.py          # 队友的 weather_observations 原样建表 + fetch_runs + risk_evaluations
 │   ├── config.py      # 阈值配置加载与结构校验
 │   ├── ingest.py      # GeoCSV → 入库；越界/缺失打标 is_valid=0（不删除）
+│   ├── conduit_client.py # 后端持有凭据，向 Conduit 发 POST 请求
+│   ├── conduit_ingest.py # Conduit JSON → 同一张 weather_observations 表
+│   ├── refresh_service.py # fetch → clean/store → evaluate 编排
 │   ├── features.py    # 1h/24h/72h/7d 窗口聚合 + 数据质量指标
 │   ├── engine.py      # 可解释规则引擎
 │   └── pipeline.py    # 编排步骤1→5 + CLI（python -m app.pipeline）
@@ -44,6 +47,27 @@ python -m app.pipeline --at 2026-09-15T00:00:00Z --db data/majiguard.db
 # 运行单元测试
 python -m pytest
 ```
+
+## Conduit 实时刷新（后端专用）
+
+不要把 Conduit API key 放进 React、浏览器请求或 Git 仓库。启动 API 的终端中设置：
+
+```bash
+export MAJIGUARD_CONDUIT_ENDPOINT='https://<official-conduit-endpoint>'
+export MAJIGUARD_CONDUIT_API_KEY='[REDACTED_SECRET]'
+export MAJIGUARD_CONDUIT_EMAIL='your-team-email@example.com'
+python -m app.api
+```
+
+前端或 Demo 工具随后调用：
+
+```text
+POST /api/refresh?fromdate=2026-09-01&todate=2026-09-02
+```
+
+该接口依次执行 Conduit POST、JSON 校验/清洗并写入
+`weather_observations`、风险评估并写入 `risk_evaluations`。本地 CSV Demo
+路径仍保留：`POST /api/refresh?source=../RainData`。
 
 ## 输出示例（真实数据）
 

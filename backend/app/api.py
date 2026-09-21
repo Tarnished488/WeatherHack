@@ -5,14 +5,16 @@ Endpoints (plan section 7, step 4):
     GET  /api/trends             metric time series (rainfall/temperature/...)
     GET  /api/alerts             evaluation / alert history
     GET  /api/data-transparency  data source, fields, rules version, limitations
-    POST /api/refresh            dev/demo: optional re-ingest + re-evaluate
+    POST /api/refresh            re-ingest + re-evaluate (CSV Demo or Conduit POST)
 
 Run:
     python -m app.api            # docs at http://127.0.0.1:8000/docs
 
 CORS: allow_origins defaults to "*" for the hackathon demo; restrict it via
 the MAJIGUARD_CORS_ORIGINS env var (comma-separated) before real deployment.
-Database path can be overridden with MAJIGUARD_DB.
+    Database path can be overridden with MAJIGUARD_DB.  Live Conduit refresh
+    additionally needs MAJIGUARD_CONDUIT_ENDPOINT, MAJIGUARD_CONDUIT_API_KEY,
+    and MAJIGUARD_CONDUIT_EMAIL.
 """
 from __future__ import annotations
 
@@ -27,6 +29,8 @@ from .db import DEFAULT_DB_PATH, connect, ensure_schema
 from .features import WINDOW_24H, WINDOW_72H, WINDOW_7D, fmt_utc, parse_utc, utc_now
 from .ingest import VALIDATION_RANGES, ingest_csv
 from .pipeline import run_evaluation
+from .conduit_client import ConduitClientError
+from .refresh_service import refresh_from_conduit
 
 API_DB_PATH = os.environ.get("MAJIGUARD_DB", str(DEFAULT_DB_PATH))
 CORS_ORIGINS = [
@@ -265,6 +269,22 @@ def create_app() -> FastAPI:
     def refresh(source: str | None = Query(None, description="Optional: CSV file or directory to re-ingest"),
                 conn=Depends(get_db)):
         """Dev / demo only: optionally re-ingest CSVs, then re-evaluate and persist."""
+    def refresh(
+        source: str | None = Query(None, description="Demo：本地 CSV/目录路径"),
+        fromdate: str | None = Query(None, description="Conduit 起始日期，例如 2026-09-01"),
+        todate: str | None = Query(None, description="Conduit 结束日期，例如 2026-09-02"),
+        conn=Depends(get_db),
+    ):
+        """刷新风险：本地 CSV Demo 或受保护的 Conduit POST 拉取。"""
+        if source and (fromdate or todate):
+            raise HTTPException(status_code=400, detail="source 不能与 fromdate/todate 同时使用")
+        if bool(fromdate) != bool(todate):
+            raise HTTPException(status_code=400, detail="fromdate 和 todate 必须同时提供")
+        if fromdate and todate:
+            try:
+                return refresh_from_conduit(conn, fromdate, todate)
+            except (ConduitClientError, ValueError) as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
         ingest_summary = None
         if source:
             ingest_summary = ingest_csv(conn, source)
