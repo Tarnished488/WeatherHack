@@ -210,11 +210,12 @@ WheaterHack/
 │   │   ├── engine.py                # Continuous index + explainable advisory rules
 │   │   ├── pipeline.py              # daily evaluate -> persist (idempotent upsert)
 │   │   ├── refresh_service.py       # fetch Conduit -> ingest -> daily re-evaluation
+│   │   ├── llm_advisor.py           # Optional DeepSeek flexible-advice layer (cached, template fallback)
 │   │   └── api.py                   # FastAPI REST API
 │   ├── config/risk_thresholds.json  # Canonical scoring/rule config (v3.0.0)
 │   ├── data/majiguard.db            # Local SQLite database (created on first run)
 │   ├── doc/                         # Data dictionary & project plan
-│   ├── tests/                       # Pytest suite (32 tests)
+│   ├── tests/                       # Pytest suite (47 tests)
 │   ├── tools/                       # Developer utilities
 │   ├── requirements.txt
 │   └── .env.example
@@ -276,6 +277,17 @@ The first call to `GET /api/current-risk` automatically computes and persists an
 
 All responses are in English. Field semantics are documented inline at `/api/data-transparency`.
 
+### Flexible advice layer (optional DeepSeek LLM)
+
+`GET /api/llm-advice` adds an optional **LLM-powered advisory layer** on top of the rule engine: the model receives the full evaluation context (score, level, confidence, triggered rules with observed evidence, key features, data quality) and returns situation-specific `summary + actions` per role (residents / farmers / managers), so advice adapts to each situation instead of repeating fixed templates.
+
+Design guarantees:
+
+- **The rule engine stays authoritative.** The LLM only rewrites the advice layer — it can never change the score, level or triggers.
+- **Hard grounding rules in the prompt.** The model may not invent measurements or forecasts and must stay inside the water-guidance scope.
+- **Graceful degradation.** Without `MAJIGUARD_DEEPSEEK_API_KEY` — or on any network/parse error — the endpoint serves the fixed rule-engine templates (`source: "template"`, plus `degraded: true` and an error `detail` when the LLM failed). The endpoint never fails because of the LLM.
+- **Token-efficient caching.** Successful answers are cached per `(rules_version, window_end_utc, model)` in the `llm_advice_cache` table; pass `?force=true` to regenerate.
+
 ## 11. Configuration
 
 Rules and thresholds live in [`backend/config/risk_thresholds.json`](backend/config/risk_thresholds.json) — the single source of truth for the engine (see §3 for the current values).
@@ -289,6 +301,9 @@ Rules and thresholds live in [`backend/config/risk_thresholds.json`](backend/con
 | `MAJIGUARD_CONDUIT_EMAIL` | Registered team email for the Conduit API |
 | `MAJIGUARD_DB` | SQLite path (default `data/majiguard.db`) |
 | `MAJIGUARD_CORS_ORIGINS` | Comma-separated allowed origins (default `http://localhost:5173`) |
+| `MAJIGUARD_DEEPSEEK_API_KEY` | Optional DeepSeek key enabling the `/api/llm-advice` layer — never commit a real key |
+| `MAJIGUARD_DEEPSEEK_BASE_URL` / `MAJIGUARD_DEEPSEEK_MODEL` | LLM endpoint and model overrides (default `https://api.deepseek.com`, `deepseek-chat`) |
+| `MAJIGUARD_LLM_TIMEOUT_SECONDS` | LLM call timeout (default `30`) |
 
 ## 12. Scaling vision: nationwide monitoring & coordination
 

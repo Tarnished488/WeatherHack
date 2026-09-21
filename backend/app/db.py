@@ -79,6 +79,22 @@ CREATE TABLE IF NOT EXISTS risk_evaluations (
 );
 """
 
+# LLM advice cache (optional flexible-advice layer, app/llm_advisor.py).
+# One row per (rules_version, window_end_utc, model) so repeated dashboard
+# calls do not re-spend tokens on an unchanged evaluation.
+LLM_ADVICE_CACHE_DDL = """
+CREATE TABLE IF NOT EXISTS llm_advice_cache (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    cache_key        TEXT NOT NULL UNIQUE,
+    model            TEXT NOT NULL,
+    rules_version    TEXT NOT NULL,
+    window_end_utc   TEXT NOT NULL,
+    risk_level       TEXT NOT NULL,
+    advice_json      TEXT NOT NULL,
+    created_at_utc   TEXT NOT NULL
+);
+"""
+
 DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "data" / "majiguard.db"
 
 
@@ -103,4 +119,5 @@ def ensure_schema(conn: sqlite3.Connection) -> None:
     conn.execute(FETCH_RUNS_DDL)
     conn.execute(WEATHER_OBSERVATIONS_DDL)
     conn.execute(RISK_EVALUATIONS_DDL)
+    conn.execute(LLM_ADVICE_CACHE_DDL)
     conn.commit()

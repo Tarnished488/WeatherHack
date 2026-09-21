@@ -32,6 +32,7 @@ from .ingest import VALIDATION_RANGES, ingest_csv
 from .pipeline import run_daily_evaluations, run_evaluation
 from .conduit_client import ConduitClientError
 from .refresh_service import refresh_from_conduit
+from . import llm_advisor
 
 API_DB_PATH = os.environ.get("MAJIGUARD_DB", str(DEFAULT_DB_PATH))
 CORS_ORIGINS = [
@@ -180,7 +181,7 @@ def create_app() -> FastAPI:
     def root():
         return {"service": "MajiGuard API", "docs": "/docs",
                 "endpoints": ["/api/current-risk", "/api/trends", "/api/risk-distribution", "/api/alerts",
-                              "/api/data-transparency", "/api/refresh"]}
+                              "/api/llm-advice", "/api/data-transparency", "/api/refresh"]}
 
     # ------------------------------------------------------------------
     @app.get("/api/current-risk")
@@ -383,6 +384,59 @@ def create_app() -> FastAPI:
                 ],
             },
             "known_limitations": KNOWN_LIMITATIONS,
+        }
+
+    # ------------------------------------------------------------------
+    @app.get("/api/llm-advice")
+    def llm_advice(
+        force: bool = Query(False, description="Bypass the cache and regenerate the advice"),
+        conn=Depends(get_db),
+    ):
+        """Flexible role advice from an optional DeepSeek LLM, grounded in the latest evaluation.
+
+        The rule engine stays authoritative for score/level/triggers; the LLM
+        only rewrites the advice layer.  Whenever the LLM is not configured or
+        the call fails, the fixed rule-engine templates are served instead, so
+        this endpoint never fails because of the LLM.
+        """
+        row = _latest_evaluation_row(conn)
+        if row is None:
+            raise HTTPException(status_code=404,
+                                detail="No evaluation yet; call /api/current-risk first")
+        evaluation = _evaluation_payload(row)
+        templates = evaluation.pop("recommendations")
+        evaluation.pop("site", None)
+        result = llm_advisor.generate_advice(conn, evaluation, force_refresh=force)
+        if result is None:
+            return {
+                "enabled": False,
+                "source": "template",
+                "window_end_utc": evaluation["window_end_utc"],
+                "risk_score": evaluation["risk_score"],
+                "risk_level": evaluation["risk_level"],
+                "advice": templates,
+                "message": ("Flexible LLM advice is disabled; set MAJIGUARD_DEEPSEEK_API_KEY "
+                            "to enable it. Fixed rule-engine templates are served instead."),
+            }
+        if result["source"] == "error":
+            return {
+                "enabled": True,
+                "source": "template",
+                "degraded": True,
+                "detail": result.get("detail"),
+                "window_end_utc": evaluation["window_end_utc"],
+                "risk_score": evaluation["risk_score"],
+                "risk_level": evaluation["risk_level"],
+                "advice": templates,
+            }
+        return {
+            "enabled": True,
+            "source": result["source"],
+            "model": result["model"],
+            "window_end_utc": evaluation["window_end_utc"],
+            "risk_score": evaluation["risk_score"],
+            "risk_level": evaluation["risk_level"],
+            "advice": result["advice"],
         }
 
     # ------------------------------------------------------------------
