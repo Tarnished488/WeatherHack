@@ -1,5 +1,5 @@
 import type { Trigger } from '../types/api'
-import { formatNumber, SCOPE_LABEL, t } from '../lib/format'
+import { formatFieldLabel, formatNumber, SCOPE_LABEL, t } from '../lib/format'
 
 export function TriggerList({ triggers }: { triggers: Trigger[] }) {
   if (triggers.length === 0) {
@@ -34,7 +34,7 @@ export function TriggerList({ triggers }: { triggers: Trigger[] }) {
           <dl className="mt-3 grid grid-cols-1 gap-1.5 rounded-lg bg-white/70 p-3 text-xs text-slate-600 ring-1 ring-slate-100 sm:grid-cols-2">
             {Object.entries(trigger.observed).map(([key, value]) => (
               <div key={key} className="flex items-center justify-between gap-2 font-mono">
-                <dt className="text-slate-500">{key}</dt>
+                <dt className="text-slate-500" title={key}>{formatFieldLabel(key)}</dt>
                 <dd className="font-semibold text-slate-700">{typeof value === 'number' ? formatNumber(value, 2) : String(value ?? '—')}</dd>
               </div>
             ))}

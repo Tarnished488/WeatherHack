@@ -46,6 +46,54 @@ export const TREND_METRICS: TrendMetric[] = [
   'risk_score',
 ]
 
+export const FIELD_NAME_MAP: Record<string, string> = {
+  // Source API fields to clean SQLite columns / data dictionary names
+  ts: 'observed_at_utc (Observation Time)',
+  rg1: 'rg1 (Rain Gauge 1)',
+  rg2: 'rg2 (Rain Gauge 2)',
+  rg1tt: 'rg1tt (Rain Gauge 1 Total Today)',
+  rg2tt: 'rg2tt (Rain Gauge 2 Total Today)',
+  rg1tp: 'rg1tp (Rain Gauge 1 Total Prior)',
+  rg2tp: 'rg2tp (Rain Gauge 2 Total Prior)',
+  temp_sht: 'temp_sht (SHT Temp °C)',
+  temp_bmx: 'temp_bmx (BMX Temp °C)',
+  temp_mcp: 'temp_mcp (MCP Temp °C)',
+  humidity_sht: 'humidity_sht (SHT Humidity %)',
+  wind_spd: 'wind_spd (Wind Speed m/s)',
+  wind_dir: 'wind_dir (Wind Direction °)',
+  wind_gust: 'wind_gust (Wind Gust m/s)',
+  wind_gust_dir: 'wind_gust_dir (Wind Gust Dir °)',
+  press_bmx: 'press_bmx (BMX Pressure hPa)',
+  heat_idx: 'heat_idx (Heat Index)',
+  wet_bulb_temp: 'wet_bulb_temp (Wet-Bulb Temp °C)',
+  wet_bulb_globe_temp: 'wet_bulb_globe_temp (WBGT °C)',
+  si1145_vis: 'si1145_vis (Visible Light)',
+  si1145_ir: 'si1145_ir (Infrared Light)',
+  si1145_uv: 'si1145_uv (UV Light)',
+
+  // Derived feature fields
+  rainfall_1h_mm: '1h Rainfall (mm)',
+  rainfall_24h_mm: '24h Rainfall (mm)',
+  rainfall_72h_mm: '72h Rainfall (mm)',
+  rain_days_7d: '7d Rainy Days',
+  temp_max_24h_c: '24h Max Temp (°C)',
+  temp_avg_24h_c: '24h Avg Temp (°C)',
+  humidity_min_24h_pct: '24h Min Humidity (%)',
+  humidity_avg_24h_pct: '24h Avg Humidity (%)',
+  wind_spd_max_24h_ms: '24h Max Wind Speed (m/s)',
+  wind_gust_max_24h_ms: '24h Max Wind Gust (m/s)',
+  heat_idx_max_24h_c: '24h Max Heat Index (°C)',
+  coverage_24h: '24h Data Coverage',
+  completeness_24h: '24h Data Completeness',
+  staleness_minutes: 'Staleness (min)',
+  invalid_ratio_24h: '24h Invalid Data Ratio',
+  sample_count_24h: '24h Sample Count',
+}
+
+export function formatFieldLabel(key: string): string {
+  return FIELD_NAME_MAP[key] ?? key
+}
+
 export const FIELD_NOTES: Record<string, string> = {
   rainfall_1h_mm:
     'Sum of rg1 + rg2 over the past 1 hour. Rain-gauge readings must not be negative; NULL if any window is empty.',
@@ -69,10 +117,13 @@ export const FIELD_NOTES: Record<string, string> = {
     'MAX(wind_gust) over 24h. Normally ≥ wind_spd; a discrepancy is logged as a soft quality warning.',
   heat_idx_max_24h_c:
     'MAX(heat_idx) over 24h. Heat index resembles a °C scale but its unit is not yet source-confirmed — treat as a derived stress metric.',
+  observed_at_utc: 'Observation timestamp in UTC (Clean column for source API field "ts"). Required and unique.',
   rg1: 'Rain gauge 1 reading in mm. Must not be negative.',
   rg2: 'Rain gauge 2 reading in mm. Must not be negative.',
   rg1tt: 'Rain gauge 1 "Total Today" reading. Preserve as-is until daily-reset behavior is validated.',
   rg2tt: 'Rain gauge 2 "Total Today" reading. Preserve as-is until daily-reset behavior is validated.',
+  rg1tp: 'Rain gauge 1 "Total Prior" reading. Source header does not define prior period.',
+  rg2tp: 'Rain gauge 2 "Total Prior" reading. Source header does not define prior period.',
   temp_sht: 'Temperature from the SHT temperature/humidity sensor (°C). Primary ambient-temperature input.',
   temp_bmx: 'BMX temperature sensor reading (°C). Can be cross-checked against temp_sht and temp_mcp.',
   temp_mcp: 'MCP temperature sensor reading (°C). Can be cross-checked against temp_bmx and temp_sht.',
@@ -80,6 +131,7 @@ export const FIELD_NOTES: Record<string, string> = {
   wind_spd: 'Wind speed in m/s. Must not be negative.',
   wind_dir: 'Wind-direction angle in degrees (0–360).',
   wind_gust: 'Wind-gust speed in m/s. Must not be negative; typically ≥ wind_spd.',
+  wind_gust_dir: 'Wind-gust direction angle in degrees (0–360).',
   press_bmx: 'BMX atmospheric-pressure sensor in hPa. Station elevation affects absolute pressure.',
   heat_idx: 'Heat index — perceived heat stress from T + RH. Unit not yet source-confirmed.',
   wet_bulb_temp: 'Wet-bulb temperature in °C. Useful for heat-stress analysis.',
@@ -119,6 +171,14 @@ const ZH_TO_EN: Record<string, string> = {
     'Strong gusts combined with high temperature further increase evaporative exposure',
   '过去 1 小时降雨突增（独立的储水/排水准备提醒，不计入用水压力分数）':
     'Rainfall spike in the past 1 hour (standalone storage/drainage notice, not counted in water-stress score)',
+
+  // Quality Triggers
+  '过去 24 小时存在较多被标记为无效的观测数据':
+    'Elevated ratio of invalid observation data in the past 24 hours',
+  '过去 24 小时观测覆盖率不足，可能存在数据缺口':
+    'Low observation coverage in the past 24 hours — potential data gap',
+
+  // Recommendations
   '评估非必要用水，考虑安全储水':
     'Reassess non-essential water use and consider safe water storage',
   '复核灌溉安排与土壤实际墒情，优先遵循当地农业指导':
@@ -173,10 +233,51 @@ const ZH_TO_EN: Record<string, string> = {
     'Postpone non-critical irrigation; prioritize drinking water and high-value crops',
   '建议发布社区告警，优先检查供水与储水设施':
     'Issue a community alert; prioritize checks on water supply and storage facilities',
+
+  // Transparency / Field Docs
+  '雨量计 1 逐分钟降雨': 'Rain gauge 1 minute reading',
+  '雨量计 2 逐分钟降雨': 'Rain gauge 2 minute reading',
+  '气温（SHT 传感器）': 'Temperature (SHT sensor)',
+  '相对湿度（SHT 传感器）': 'Relative humidity (SHT sensor)',
+  '平均风速': 'Average wind speed',
+  '阵风风速': 'Wind gust speed',
+  '大气压（BMP 传感器）': 'Atmospheric pressure (BMX sensor)',
+  '大气压（BMX 传感器）': 'Atmospheric pressure (BMX sensor)',
+  '体感高温指数': 'Heat index',
+  '湿球温度': 'Wet-bulb temperature',
+  '湿球黑球温度': 'WBGT (Wet-Bulb Globe Temperature)',
+  '可见光 / 红外 / 紫外读数': 'Visible / Infrared / UV light readings',
+
+  // Data Source & Policy
+  'Conduit@Empathy1 环境站（3D FEWS NET / UCAR ICDP）':
+    'Conduit@Empathy1 Weather Station (3D FEWS NET / UCAR ICDP)',
+  '1 分钟': '1 minute',
+  '趋势接口按小时（24h/72h）或按天（7d）聚合':
+    'Trends aggregated hourly (24h/72h) or daily (7d)',
+  '越界或关键字段缺失 → is_valid=0 并写入 quality_flags_json，不删除数据':
+    'Out-of-range or missing critical fields → is_valid=0 and recorded in quality_flags_json without deleting data',
+
+  // Known Limitations
+  '阈值基于单一站点（JKUAT, Kiambu）2026-08 ~ 2026-09 约 3 周数据调优，尚未跨季节验证。':
+    'Thresholds tuned on ~3 weeks of single-station data (JKUAT, Kiambu; Aug–Sep 2026); not yet seasonally validated.',
+  '不输出医疗、公共卫生或饮用水安全结论。':
+    'Does not output medical, public health, or potable water safety conclusions.',
+  '不输出精确灌溉水量或作物专属建议。':
+    'Does not output precise irrigation volume or crop-specific recommendations.',
+  '不提供权威洪水预测；降雨突增仅为储水/排水准备提醒。':
+    'Does not provide authoritative flood forecasting; rainfall spikes trigger storage/drainage preparation warnings only.',
+  '不假设数据中存在水质或水量字段。':
+    'Does not assume water quality or volume fields are present in data.',
+  '系统仅提供决策支持，不直接控制水泵、灌溉设备或公共基础设施。':
+    'System provides decision support only; does not directly control pumps, irrigation, or public infrastructure.',
 }
 
 export function t(text: string): string {
   if (!text) return text
+  if (text.startsWith('最新观测已滞后约')) {
+    const mins = text.replace(/[^0-9]/g, '')
+    return `Latest observation lags by ~${mins} minutes — data may be stale`
+  }
   return ZH_TO_EN[text] ?? text
 }
 

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react'
 import { getTransparency, postRefresh } from '../api/client'
 import { ErrorBlock, LoadingBlock, StatusBanner } from '../components/StatusBanner'
-import { errorMessage, formatNumber, LEVEL_LABEL, describeField, t } from '../lib/format'
+import { describeField, errorMessage, formatFieldLabel, formatNumber, LEVEL_LABEL, t } from '../lib/format'
 import { useApi } from '../lib/useApi'
 
 export function TransparencyPage() {
@@ -96,7 +96,7 @@ export function TransparencyPage() {
         <dl className="grid gap-4 text-sm sm:grid-cols-2">
           <div className="rounded-xl bg-slate-50/80 p-3">
             <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Name</dt>
-            <dd className="mt-0.5 font-semibold text-slate-800">{source.name}</dd>
+            <dd className="mt-0.5 font-semibold text-slate-800">{t(source.name)}</dd>
           </div>
           <div className="rounded-xl bg-slate-50/80 p-3">
             <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Site</dt>
@@ -115,11 +115,11 @@ export function TransparencyPage() {
           </div>
           <div className="rounded-xl bg-slate-50/80 p-3">
             <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Sampling interval</dt>
-            <dd className="mt-0.5 font-semibold text-slate-800">{source.sampling_interval}</dd>
+            <dd className="mt-0.5 font-semibold text-slate-800">{t(source.sampling_interval)}</dd>
           </div>
           <div className="rounded-xl bg-slate-50/80 p-3">
             <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Aggregation</dt>
-            <dd className="mt-0.5 font-semibold text-slate-800">{source.aggregation}</dd>
+            <dd className="mt-0.5 font-semibold text-slate-800">{t(source.aggregation)}</dd>
           </div>
         </dl>
       </section>
@@ -147,10 +147,10 @@ export function TransparencyPage() {
             <tbody className="divide-y divide-slate-100">
               {data.fields_used.map((field, idx) => (
                 <tr key={field.column} className={idx % 2 ? 'bg-white/40' : ''}>
-                  <td className="px-5 py-3 font-mono text-xs text-slate-800">{field.column}</td>
+                  <td className="px-5 py-3 font-mono text-xs text-slate-800">{formatFieldLabel(field.column)}</td>
                   <td className="px-5 py-3 text-slate-700">{field.unit}</td>
                   <td className="px-5 py-3 text-slate-700">
-                    <div className="text-sm leading-relaxed">{field.description}</div>
+                    <div className="text-sm leading-relaxed">{t(field.description)}</div>
                     {describeField(field.column) !== field.column ? (
                       <div className="mt-1 text-xs text-slate-500">
                         <span className="font-medium text-slate-600">Validation / usage:</span>{' '}
@@ -174,14 +174,14 @@ export function TransparencyPage() {
           </div>
           <h2 className="text-lg font-semibold text-slate-900">Validation Policy</h2>
         </div>
-        <p className="rounded-xl bg-slate-50/80 p-4 text-sm leading-relaxed text-slate-700">{data.validation.policy}</p>
+        <p className="rounded-xl bg-slate-50/80 p-4 text-sm leading-relaxed text-slate-700">{t(data.validation.policy)}</p>
         <div className="mt-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Expected value ranges</p>
           <ul className="mt-2 grid gap-2 font-mono text-xs sm:grid-cols-2">
             {Object.entries(data.validation.ranges).map(([key, range]) => (
               <li key={key} className="rounded-lg border border-slate-100 bg-white/60 px-3 py-2">
                 <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-700">{key}</span>
+                  <span className="font-semibold text-slate-700">{formatFieldLabel(key)}</span>
                   <span className="text-slate-500">
                     {formatNumber(range[0], 2)} <span className="text-slate-300">→</span> {formatNumber(range[1], 2)}
                   </span>
@@ -227,7 +227,7 @@ export function TransparencyPage() {
                   <li key={`${cond.feature}-${cond.op}`} className="flex flex-col gap-0.5">
                     <div className="flex items-center gap-2">
                       <span className="inline-block h-1 w-1 rounded-full bg-slate-400" />
-                      <span className="font-semibold text-slate-700">{cond.feature}</span>
+                      <span className="font-semibold text-slate-700">{formatFieldLabel(cond.feature)}</span>
                       <span className="text-slate-400">{cond.op}</span>
                       <span className="text-slate-500">{Array.isArray(cond.value) ? cond.value.join(', ') : cond.value}</span>
                     </div>
@@ -258,7 +258,7 @@ export function TransparencyPage() {
           {data.known_limitations.map((item, idx) => (
             <li key={item} className="flex gap-3 rounded-xl bg-white/60 p-3">
               <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-bold text-slate-500">{idx + 1}</span>
-              <span className="text-sm leading-relaxed text-slate-700">{item}</span>
+              <span className="text-sm leading-relaxed text-slate-700">{t(item)}</span>
             </li>
           ))}
         </ul>
