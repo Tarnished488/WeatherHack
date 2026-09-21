@@ -93,23 +93,41 @@ export function DashboardPage() {
         <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white/80 p-2 shadow-sm backdrop-blur">
           <label className="text-xs font-medium text-slate-600">
             From
-            <input
-              type="date"
-              value={fromDate}
-              max={toDate || undefined}
-              onChange={(event) => setFromDate(event.target.value)}
-              className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/30"
-            />
+            <div className="relative mt-1">
+              <input
+                type="date"
+                lang="en-GB"
+                aria-label="Start date"
+                value={fromDate}
+                max={toDate || undefined}
+                onChange={(event) => setFromDate(event.target.value)}
+                className={`block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/30 ${fromDate ? '' : 'date-input-empty'}`}
+              />
+              {!fromDate ? (
+                <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-sm text-slate-500">
+                  YYYY-MM-DD
+                </span>
+              ) : null}
+            </div>
           </label>
           <label className="text-xs font-medium text-slate-600">
             To
-            <input
-              type="date"
-              value={toDate}
-              min={fromDate || undefined}
-              onChange={(event) => setToDate(event.target.value)}
-              className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/30"
-            />
+            <div className="relative mt-1">
+              <input
+                type="date"
+                lang="en-GB"
+                aria-label="End date"
+                value={toDate}
+                min={fromDate || undefined}
+                onChange={(event) => setToDate(event.target.value)}
+                className={`block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/30 ${toDate ? '' : 'date-input-empty'}`}
+              />
+              {!toDate ? (
+                <span className="pointer-events-none absolute inset-y-0 left-2 flex items-center text-sm text-slate-500">
+                  YYYY-MM-DD
+                </span>
+              ) : null}
+            </div>
           </label>
           <button
             type="button"

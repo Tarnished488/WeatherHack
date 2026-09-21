@@ -7,3 +7,13 @@ body {
   color: #0f172a;
   font-family: system-ui, "Segoe UI", Roboto, sans-serif;
 }
+
+/* Native date placeholders follow the macOS locale. Hide the empty WebKit
+   segments so the dashboard can present a consistent English placeholder. */
+.date-input-empty::-webkit-datetime-edit {
+  color: transparent;
+}
+
+.date-input-empty:focus::-webkit-datetime-edit {
+  color: transparent;
+}
