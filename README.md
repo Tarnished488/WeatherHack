@@ -6,13 +6,13 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-6-3178C6?logo=typescript&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-06B6D4?logo=tailwindcss&logoColor=white)
-![Tests](https://img.shields.io/badge/Pytest-29%20passed-6A9F32?logo=pytest&logoColor=white)
+![Tests](https://img.shields.io/badge/Pytest-32%20passed-6A9F32?logo=pytest&logoColor=white)
 
 **Community water-stress risk and action guidance — a Hack The Weather prototype.**
 
 MajiGuard turns raw environmental observations from the official **Conduit@Empathy** station (JKUAT, Kiambu, Kenya) into clear, explainable, role-aware guidance. Instead of another raw weather chart, it answers one question: *given the last few hours and days of rainfall, temperature, humidity and wind — what should residents, farmers, and site managers actually do right now?*
 
-Every result ships with three things: a **risk score** you can fully trace back to triggered rules, a **confidence value** that reflects data quality, and **action recommendations written per role** — so a farmer, a resident, and a water manager each get advice that makes sense for them.
+Every result ships with three things: a **continuous 0–100 risk score** derived from observable sensor conditions, a **confidence value** that reflects data quality, and **action recommendations written per role** — so a farmer, a resident, and a water manager each get advice that makes sense for them.
 
 > **Scope boundary (important):** the MVP only uses fields that actually exist in the official Conduit data. We do **not** claim to measure water quality, water volume, flood probability, actual crop water demand, or health risk. Those remain future directions until the data can support them.
 
@@ -26,8 +26,8 @@ Environmental sensor dashboards show numbers, not decisions. A chart of rain-gau
 
 MajiGuard converts recent Conduit observations into:
 
-- **Risk Score (0–100)** — a weighted sum of triggered rules, capped at 100. Every point can be traced to a rule and its evidence.
-- **Risk Level** — `Low` / `Medium` / `High` (band cutoffs: ≤29 / 30–59 / ≥60).
+- **Risk Score (0–100)** — a continuous weighted index built from rainfall deficit, heat, humidity and wind severity. It changes with the observed values rather than only when a binary rule switches on or off.
+- **Risk Level** — the 0–100 index split into equal thirds: `Low` (0–33.33), `Medium` (33.34–66.67), and `High` (66.68–100).
 - **Confidence (0–1.0)** — penalised by low sampling coverage, flagged/invalid rows, missing critical features, and stale data, so consumers know how much to trust a result.
 - **Triggered rules** — each with a human-readable description, the observed values, and per-role recommendations.
 - **Action recommendations per role** — separate guidance for *residents*, *farmers*, and *managers*, built from level templates plus rule-specific advice.
@@ -35,36 +35,90 @@ MajiGuard converts recent Conduit observations into:
 
 ## 3. How the risk score works
 
-The engine is deliberately simple and fully explainable — no black box. Everything below is driven by one versioned config file: [`backend/config/risk_thresholds.json`](backend/config/risk_thresholds.json).
+The current engine uses a transparent **continuous weighted index (rules version 3.0.0)**. It does not add a fixed number only when a rule fires. Instead, every scoring input is converted to a severity between 0 and 1 from its observed sensor value, then multiplied by its configured weight. All parameters live in the versioned config file [`backend/config/risk_thresholds.json`](backend/config/risk_thresholds.json).
+
+For component `i`:
+
+```text
+severity_i = clamp(
+    (observed_i - low_risk_value_i)
+    / (high_risk_value_i - low_risk_value_i),
+    0,
+    1
+)
+
+Risk Score = 100 × Σ(severity_i × weight_i) / Σ(available weights)
+```
+
+`low_risk_value` and `high_risk_value` describe direction as well as range. For rainfall and humidity, the high-risk value is lower than the low-risk value, so less rain or lower humidity produces a larger severity. Values outside a configured range are clamped; the final score therefore always stays between 0 and 100.
 
 ```mermaid
 flowchart TD
-    A["Window features<br/>rain 1h/24h/72h/7d · max temp · min humidity · max gust"] --> B{"Rules fire?<br/>(a rule fires when ALL its conditions hold)"}
-    B -->|"stress rules"| C["Score = sum of triggered weights<br/>capped at 100 (v1.0.0 max 80)"]
-    B -->|"burst rule"| D["Standalone preparedness alert<br/>(not counted in the score)"]
-    C --> E{"Level bands"}
-    E -->|"≤ 29"| F["Low"]
-    E -->|"30–59"| G["Medium"]
-    E -->|"≥ 60"| H["High"]
-    C --> I["Role-based recommendations<br/>residents · farmers · managers"]
+    A["Daily evaluation point<br/>last observation of each calendar day"] --> B["Rolling features<br/>rain 24h/72h/7d · max temp · min humidity · max gust"]
+    B --> C["Convert each observed value<br/>to a continuous 0–1 severity"]
+    C --> D["Apply component weights<br/>and normalise to 0–100"]
+    D --> E{"Equal score bands"}
+    E -->|"0–33.33"| F["Low"]
+    E -->|"33.34–66.67"| G["Medium"]
+    E -->|"66.68–100"| H["High"]
+    B --> I{"Advisory rule fires?"}
+    I --> J["Explainable trigger + role-based advice"]
+    I -->|"1h rain ≥ 5 mm"| K["Burst preparedness alert<br/>does not change Risk Score"]
 ```
 
-### 3.1 Critical values and rule weights (v1.0.0)
+### 3.1 Continuous scoring components (v3.0.0)
 
-| Rule | Critical value | Weight |
-|---|---|---|
-| `dry_72h` | 72h rainfall ≤ 2.0 mm | 25 |
-| `dry_7d_baseline` | ≤ 1 rainy day in the last 7 days | 10 |
-| `hot_and_dry` | 24h max temp ≥ 30 °C **and** 24h min humidity ≤ 40 % | 25 |
-| `hot_exposure` | 24h max temp ≥ 32 °C | 10 |
-| `windy_and_hot` | 24h max gust ≥ 10 m/s **and** 24h max temp ≥ 28 °C | 10 |
-| `rain_burst_1h` | 1h rainfall ≥ 5.0 mm | **burst alert** — separate preparedness warning, weight 0 |
+The six weights total 100 when every input is present:
 
-The five stress rules sum to a maximum of **80**; the raw sum is capped at 100 to leave headroom for future rules. Level bands: `Low ≤ 29`, `Medium 30–59`, `High ≥ 60`.
+| Component | Source feature | Low-risk value (0 severity) | High-risk value (1 severity) | Weight |
+|---|---|---:|---:|---:|
+| 24h rainfall deficit | `rainfall_24h_mm` | 5.0 mm | 0.0 mm | 15 |
+| 72h rainfall deficit | `rainfall_72h_mm` | 15.0 mm | 0.0 mm | 20 |
+| 7-day rainy-day deficit | `rain_days_7d` | 3 days | 0 days | 10 |
+| Heat exposure | `temp_max_24h_c` | 18 °C | 35 °C | 25 |
+| Dry-air exposure | `humidity_min_24h_pct` | 80 % | 30 % | 20 |
+| Wind evaporation exposure | `wind_gust_max_24h_ms` | 2 m/s | 12 m/s | 10 |
 
-**Worked example:** if the last 72h saw ≤ 2.0 mm rain (+25) and the past 24h hit 31 °C at 35 % humidity (+25), the score is **50 → Medium**.
+If a scoring feature is missing, that component is excluded and the available weights are re-normalised. Missing data still lowers the separate confidence value, so a score is never presented as equally trustworthy when its evidence is incomplete.
 
-### 3.2 Confidence — how much to trust this result
+**Worked example:** for 0 mm rain in 24h, 3 mm in 72h, one rainy day in 7d, a 28 °C daily maximum, 45 % minimum humidity and a 6 m/s maximum gust:
+
+```text
+24h rain deficit     1.00 × 15 = 15.0
+72h rain deficit     0.80 × 20 = 16.0
+rainy-day deficit    0.67 × 10 =  6.7
+heat exposure        0.59 × 25 = 14.7
+dry-air exposure     0.70 × 20 = 14.0
+wind exposure        0.40 × 10 =  4.0
+                                  ────
+Risk Score                       = 70.4 → High
+```
+
+### 3.2 Daily calculation and dashboard aggregation
+
+MajiGuard calculates one evaluation for every calendar day containing observations. Each daily evaluation ends at that day's final observation and uses only data available up to that time; future observations cannot leak into a historical score.
+
+The home-page overview uses the latest seven daily evaluations:
+
+- the **donut chart** counts how many days were `Low`, `Medium`, or `High`;
+- the **line chart** plots the exact 0–100 Risk Score for each day.
+
+The distribution is an observed historical day count, not a forecast probability.
+
+### 3.3 Advisory triggers (separate from score calculation)
+
+The following binary rules remain for explanations and role-specific recommendations. In v3.0.0 they do **not** add fixed points to the continuous Risk Score.
+
+| Rule | Advisory condition |
+|---|---|
+| `dry_72h` | 72h rainfall ≤ 2.0 mm |
+| `dry_7d_baseline` | ≤ 1 rainy day in the last 7 days |
+| `hot_and_dry` | 24h max temp ≥ 30 °C **and** 24h min humidity ≤ 40 % |
+| `hot_exposure` | 24h max temp ≥ 32 °C |
+| `windy_and_hot` | 24h max gust ≥ 10 m/s **and** 24h max temp ≥ 28 °C |
+| `rain_burst_1h` | 1h rainfall ≥ 5.0 mm; standalone preparedness alert |
+
+### 3.4 Confidence — how much to trust this result
 
 Confidence starts at 1.0 and is reduced by transparent penalties:
 
@@ -125,7 +179,7 @@ Validation rules (ranges, negative values, humidity 0–100) are documented in [
 | Storage | SQLite (`weather_observations`, `fetch_runs`, `risk_evaluations`) |
 | Rules / features | Pure-Python rule engine + SQL aggregation (no heavy deps) |
 | Frontend | React 19 + TypeScript + Vite, Tailwind CSS 4, Recharts |
-| Testing | Pytest (29 tests: features, engine, ingest, pipeline, API) |
+| Testing | Pytest (32 tests: features, engine, ingest, pipeline, API) |
 
 ## 7. Architecture
 
@@ -153,14 +207,14 @@ WheaterHack/
 │   │   ├── conduit_client.py        # Authenticated Conduit HTTP API client
 │   │   ├── conduit_ingest.py        # Conduit JSON -> DB (same validation rules)
 │   │   ├── features.py              # Window aggregation & quality features
-│   │   ├── engine.py                # Explainable rule engine
-│   │   ├── pipeline.py              # evaluate -> persist (idempotent upsert)
-│   │   ├── refresh_service.py       # fetch Conduit -> ingest -> re-evaluate
-│   │   └── api.py                   # FastAPI app (5 endpoints)
-│   ├── config/risk_thresholds.json  # Canonical rule/threshold config (v1.0.0)
+│   │   ├── engine.py                # Continuous index + explainable advisory rules
+│   │   ├── pipeline.py              # daily evaluate -> persist (idempotent upsert)
+│   │   ├── refresh_service.py       # fetch Conduit -> ingest -> daily re-evaluation
+│   │   └── api.py                   # FastAPI REST API
+│   ├── config/risk_thresholds.json  # Canonical scoring/rule config (v3.0.0)
 │   ├── data/majiguard.db            # Local SQLite database (created on first run)
 │   ├── doc/                         # Data dictionary & project plan
-│   ├── tests/                       # Pytest suite (29 tests)
+│   ├── tests/                       # Pytest suite (32 tests)
 │   ├── tools/                       # Developer utilities
 │   ├── requirements.txt
 │   └── .env.example
@@ -214,8 +268,9 @@ The first call to `GET /api/current-risk` automatically computes and persists an
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/current-risk` | Latest risk evaluation (score, level, confidence, triggered rules, per-role recommendations). Auto-computes once if none exists. |
-| `GET` | `/api/trends` | Time-bucketed trends for `rainfall`, `temperature`, `wind`, `humidity`, or `risk_score`; `period=24h/72h/7d`. |
-| `GET` | `/api/alerts` | Recent evaluations that reached `High` level, with triggered rules and advice. |
+| `GET` | `/api/trends` | Time-bucketed trends for rainfall, temperature, humidity, wind, pressure, or `risk_score`; supports day/week/month/three-month periods. |
+| `GET` | `/api/risk-distribution` | Daily Low/Medium/High counts and exact daily scores for a selected interval. |
+| `GET` | `/api/alerts` | Recent persisted evaluations with triggered rules and advice. |
 | `GET` | `/api/data-transparency` | Data source info, fields used, aggregation, rule version, known limitations. |
 | `POST` | `/api/refresh` | Re-run the evaluation pipeline on the latest stored data. |
 
@@ -263,7 +318,7 @@ Beyond water stress, the same explainable chain — *observed features → criti
 
 ## 13. Known limitations
 
-- Risk rules are hand-tuned heuristics (v1.0.0) calibrated on the provided dry-season sample; they are decision *support*, not a forecast.
+- Continuous scoring ranges and advisory rules are hand-tuned heuristics (v3.0.0) calibrated on the provided dry-season sample; they are decision *support*, not a forecast.
 - Single-station scope: no inter-station comparison yet (see §12 for the scaling path).
 - `rg1tt/rg2tt/rg1tp/rg2tp` daily-total fields are stored but not yet used for rainfall derivation (daily-reset behaviour unverified).
 - `wind_gust_dir` is excluded (source anomaly). SI1145 light channels are raw values, not lux/UV-index.
@@ -283,12 +338,12 @@ This project was built with the assistance of AI coding tools (code generation, 
 ## 16. Roadmap
 
 - [ ] Scheduled auto-refresh (e.g. every 15 minutes) via APScheduler / cron, gated by data freshness
-- [ ] Finish React dashboard pages: current risk, trends, alerts, data transparency
+- [x] Build React dashboard pages: current risk, weekly distribution, daily score line, trends, alerts, and data transparency
 - [ ] Multi-station ingestion: `station_id` schema extension (Phase 1 of §12)
 - [ ] Long-term: evolve into a nationwide weather-safety early-warning platform (§12 outlook)
 - [ ] Verify `rg*tt/tp` daily-total semantics; adopt them for rainfall if validated
 - [ ] Calibrate thresholds against a longer Conduit history (wet-season behaviour)
-- [ ] Merge / reconcile the alternative FAO/WMO-weighted threshold draft with v1.0.0
+- [ ] Validate and calibrate the v3.0.0 component ranges against FAO/WMO guidance and longer local observations
 - [ ] Optional: PostgreSQL, map view, lightweight anomaly detection
 
 ---
