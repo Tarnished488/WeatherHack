@@ -250,6 +250,17 @@ The current MVP evaluates **one station** (JKUAT). The pipeline was designed so 
 
 *This section describes the design direction, not current capability. The MVP today covers a single station.*
 
+### Long-term outlook: a nationwide weather-safety early-warning system
+
+Beyond water stress, the same explainable chain — *observed features → critical values → explainable alert → role-specific advice* — generalizes naturally into a **nationwide weather-safety protection and early-warning platform**:
+
+- **Multi-hazard coverage from sensors already deployed.** Heat exposure (temperature/humidity extremes, heat-stress indices once validated), destructive wind gusts, and intense burst rainfall can each reuse the feature + rule pipeline with their own versioned threshold sets — one engine, many hazard profiles.
+- **One national picture, locally actionable.** Stations across the country feed a national aggregation layer: each county sees its own risk level, alert history and trends, while national authorities see a coordinated map for positioning maintenance crews, water supplies and emergency resources *before* hazards hit, not after.
+- **Warnings that reach people.** Role-specific messages (residents / farmers / managers / emergency coordinators) are designed to route to SMS, community radio and app notifications — plain language, explicit confidence, no raw charts.
+- **Trustworthy by design.** Every public warning decomposes into station-level evidence — which station, which rule, which observed values — so the system stays auditable and can complement national meteorological services and county disaster-risk-management structures rather than replace them.
+
+*This outlook builds on Phases 1–4 above and assumes validated multi-station data; it is not part of the current MVP.*
+
 ## 13. Known limitations
 
 - Risk rules are hand-tuned heuristics (v1.0.0) calibrated on the provided dry-season sample; they are decision *support*, not a forecast.
@@ -274,6 +285,7 @@ This project was built with the assistance of AI coding tools (code generation, 
 - [ ] Scheduled auto-refresh (e.g. every 15 minutes) via APScheduler / cron, gated by data freshness
 - [ ] Finish React dashboard pages: current risk, trends, alerts, data transparency
 - [ ] Multi-station ingestion: `station_id` schema extension (Phase 1 of §12)
+- [ ] Long-term: evolve into a nationwide weather-safety early-warning platform (§12 outlook)
 - [ ] Verify `rg*tt/tp` daily-total semantics; adopt them for rainfall if validated
 - [ ] Calibrate thresholds against a longer Conduit history (wet-season behaviour)
 - [ ] Merge / reconcile the alternative FAO/WMO-weighted threshold draft with v1.0.0
