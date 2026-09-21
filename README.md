@@ -210,7 +210,13 @@ WheaterHack/
 │   │   ├── engine.py                # Continuous index + explainable advisory rules
 │   │   ├── pipeline.py              # daily evaluate -> persist (idempotent upsert)
 │   │   ├── refresh_service.py       # fetch Conduit -> ingest -> daily re-evaluation
-│   │   ├── llm_advisor.py           # Optional DeepSeek flexible-advice layer (cached, template fallback)
+│   │   ├── llm/                     # Flexible LLM advice layer (DeepSeek)
+│   │   │   ├── config.py            #   env: API key, base URL, model, timeout
+│   │   │   ├── prompts.py           #   grounding contract + evaluation context
+│   │   │   ├── client.py            #   /chat/completions call (injectable)
+│   │   │   ├── advice.py            #   strict response validation
+│   │   │   ├── cache.py             #   llm_advice_cache table
+│   │   │   └── service.py           #   generate_advice: cache -> call -> fallback
 │   │   └── api.py                   # FastAPI REST API
 │   ├── config/risk_thresholds.json  # Canonical scoring/rule config (v3.0.0)
 │   ├── data/majiguard.db            # Local SQLite database (created on first run)

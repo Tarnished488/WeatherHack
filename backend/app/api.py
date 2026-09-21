@@ -32,7 +32,7 @@ from .ingest import VALIDATION_RANGES, ingest_csv
 from .pipeline import run_daily_evaluations, run_evaluation
 from .conduit_client import ConduitClientError
 from .refresh_service import refresh_from_conduit
-from . import llm_advisor
+from .llm import service as llm_service
 
 API_DB_PATH = os.environ.get("MAJIGUARD_DB", str(DEFAULT_DB_PATH))
 CORS_ORIGINS = [
@@ -406,7 +406,7 @@ def create_app() -> FastAPI:
         evaluation = _evaluation_payload(row)
         templates = evaluation.pop("recommendations")
         evaluation.pop("site", None)
-        result = llm_advisor.generate_advice(conn, evaluation, force_refresh=force)
+        result = llm_service.generate_advice(conn, evaluation, force_refresh=force)
         if result is None:
             return {
                 "enabled": False,

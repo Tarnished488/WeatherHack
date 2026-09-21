@@ -1,4 +1,4 @@
-"""Tests for the optional DeepSeek flexible-advice layer (app/llm_advisor.py)."""
+"""Tests for the optional DeepSeek flexible-advice layer (app/llm/ package)."""
 from __future__ import annotations
 
 import json
@@ -8,8 +8,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.api as api_module
-import app.llm_advisor as llm_advisor
-from app.llm_advisor import (
+import app.llm.service as llm_service
+from app.llm import (
     LLMAdvisorError,
     build_messages,
     generate_advice,
@@ -246,7 +246,7 @@ def client(conn):
 def test_llm_advice_without_key_serves_templates(conn, client, monkeypatch):
     seed_quiet_week(conn)
     run_evaluation(conn)
-    monkeypatch.setattr(llm_advisor, "load_llm_config",
+    monkeypatch.setattr(llm_service, "load_llm_config",
                         lambda: _cfg(enabled=False, api_key=""))
     resp = client.get("/api/llm-advice")
     assert resp.status_code == 200
@@ -268,7 +268,7 @@ def test_llm_advice_uses_llm_when_available(conn, client, monkeypatch):
         calls["window_end_utc"] = evaluation["window_end_utc"]
         return {"source": "llm", "model": "deepseek-chat", "advice": advice}
 
-    monkeypatch.setattr(llm_advisor, "generate_advice", fake_generate)
+    monkeypatch.setattr(llm_service, "generate_advice", fake_generate)
     resp = client.get("/api/llm-advice")
     assert resp.status_code == 200
     body = resp.json()
