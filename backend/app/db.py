@@ -83,10 +83,16 @@ DEFAULT_DB_PATH = Path(__file__).resolve().parents[1] / "data" / "majiguard.db"
 
 
 def connect(db_path: str | Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    """Open a SQLite connection with row access and FK enforcement on."""
+    """Open a SQLite connection with row access and FK enforcement on.
+
+    check_same_thread=False: the API layer creates one connection per request
+    (never shared concurrently), and TestClient runs sync endpoints in a
+    worker thread, so cross-thread use of a single sequential connection
+    must be allowed.
+    """
     if str(db_path) != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
