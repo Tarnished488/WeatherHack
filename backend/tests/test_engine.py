@@ -81,7 +81,7 @@ def test_rain_burst_is_preparedness_not_stress(thresholds):
     assert result["risk_score"] == 0            # burst adds no stress points
     assert result["risk_level"] == "Low"
     # burst recommendation propagated to all audiences
-    assert any("储水" in r or "排水" in r for r in result["recommendations"]["managers"])
+    assert any("storage" in r or "drainage" in r for r in result["recommendations"]["managers"])
 
 
 def test_missing_features_never_fire_rules(thresholds):

@@ -97,7 +97,7 @@ def _quality_alerts(quality: dict, ccfg: dict) -> list[dict]:
                 "id": "stale_data",
                 "scope": "quality",
                 "weight": 0,
-                "description_zh": f"最新观测已滞后约 {int(stale)} 分钟，数据可能过期",
+                "description": f"Latest observation is about {int(stale)} minutes old; data may be outdated",
                 "observed": {"staleness_minutes": round(stale, 1)},
             }
         )
@@ -107,7 +107,7 @@ def _quality_alerts(quality: dict, ccfg: dict) -> list[dict]:
                 "id": "quality_flagged",
                 "scope": "quality",
                 "weight": 0,
-                "description_zh": "过去 24 小时存在较多被标记为无效的观测数据",
+                "description": "A significant share of observations in the past 24h were flagged as invalid",
                 "observed": {"invalid_ratio_24h": quality["invalid_ratio_24h"]},
             }
         )
@@ -117,7 +117,7 @@ def _quality_alerts(quality: dict, ccfg: dict) -> list[dict]:
                 "id": "data_gap",
                 "scope": "quality",
                 "weight": 0,
-                "description_zh": "过去 24 小时观测覆盖率不足，可能存在数据缺口",
+                "description": "Observation coverage in the past 24h is low; possible data gap",
                 "observed": {"coverage_24h": quality["coverage_24h"]},
             }
         )
@@ -154,7 +154,7 @@ def evaluate(features: dict, quality: dict, thresholds: dict) -> dict:
                 "id": rule["id"],
                 "scope": rule["scope"],
                 "weight": rule["weight"],
-                "description_zh": rule["description_zh"],
+                "description": rule["description"],
                 "observed": {
                     cond["feature"]: features[cond["feature"]] for cond in rule["conditions"]
                 },

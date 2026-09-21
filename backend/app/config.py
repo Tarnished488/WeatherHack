@@ -31,7 +31,7 @@ def load_thresholds(path: str | Path | None = None) -> dict:
 
     seen_ids: set[str] = set()
     for rule in cfg["rules"]:
-        for key in ("id", "scope", "weight", "conditions", "description_zh"):
+        for key in ("id", "scope", "weight", "conditions", "description"):
             if key not in rule:
                 raise ConfigError(f"Rule missing required key {key!r}: {rule}")
         if rule["id"] in seen_ids:

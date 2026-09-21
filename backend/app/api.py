@@ -37,35 +37,35 @@ TREND_PERIODS = {"24h": WINDOW_24H, "72h": WINDOW_72H, "7d": WINDOW_7D}
 
 # metric -> (sql expression builder kind, column, description)
 TREND_METRICS = {
-    "rainfall": ("rain", None, "累计降雨 (mm)，rg1+rg2"),
-    "temperature": ("agg", "AVG(temp_sht)", "平均气温 (°C)"),
-    "humidity": ("agg", "AVG(humidity_sht)", "平均相对湿度 (%)"),
-    "wind_speed": ("agg", "AVG(wind_spd)", "平均风速 (m/s)"),
-    "wind_gust": ("agg", "MAX(wind_gust)", "最大阵风 (m/s)"),
-    "pressure": ("agg", "AVG(press_bmx)", "平均气压 (hPa)"),
+    "rainfall": ("rain", None, "Cumulative rainfall (mm), rg1+rg2"),
+    "temperature": ("agg", "AVG(temp_sht)", "Mean air temperature (C)"),
+    "humidity": ("agg", "AVG(humidity_sht)", "Mean relative humidity (%)"),
+    "wind_speed": ("agg", "AVG(wind_spd)", "Mean wind speed (m/s)"),
+    "wind_gust": ("agg", "MAX(wind_gust)", "Max wind gust (m/s)"),
+    "pressure": ("agg", "AVG(press_bmx)", "Mean pressure (hPa)"),
 }
 
 FIELD_DOCS = [
-    ("rg1", "mm", "雨量计 1 逐分钟降雨"),
-    ("rg2", "mm", "雨量计 2 逐分钟降雨"),
-    ("temp_sht", "degC", "气温（SHT 传感器）"),
-    ("humidity_sht", "%", "相对湿度（SHT 传感器）"),
-    ("wind_spd", "m/s", "平均风速"),
-    ("wind_gust", "m/s", "阵风风速"),
-    ("press_bmx", "hPa", "大气压（BMP 传感器）"),
-    ("heat_idx", "degC", "体感高温指数"),
-    ("wet_bulb_temp", "degC", "湿球温度"),
-    ("wet_bulb_globe_temp", "degC", "湿球黑球温度"),
-    ("si1145_vis / si1145_ir / si1145_uv", "#", "可见光 / 红外 / 紫外读数"),
+    ("rg1", "mm", "Rain gauge 1 per-minute rainfall"),
+    ("rg2", "mm", "Rain gauge 2 per-minute rainfall"),
+    ("temp_sht", "degC", "Air temperature (SHT sensor)"),
+    ("humidity_sht", "%", "Relative humidity (SHT sensor)"),
+    ("wind_spd", "m/s", "Average wind speed"),
+    ("wind_gust", "m/s", "Wind gust speed"),
+    ("press_bmx", "hPa", "Atmospheric pressure (BMP sensor)"),
+    ("heat_idx", "degC", "Heat index"),
+    ("wet_bulb_temp", "degC", "Wet-bulb temperature"),
+    ("wet_bulb_globe_temp", "degC", "Wet-bulb globe temperature"),
+    ("si1145_vis / si1145_ir / si1145_uv", "#", "Visible / infrared / UV readings"),
 ]
 
 KNOWN_LIMITATIONS = [
-    "阈值基于单一站点（JKUAT, Kiambu）2026-08 ~ 2026-09 约 3 周数据调优，尚未跨季节验证。",
-    "不输出医疗、公共卫生或饮用水安全结论。",
-    "不输出精确灌溉水量或作物专属建议。",
-    "不提供权威洪水预测；降雨突增仅为储水/排水准备提醒。",
-    "不假设数据中存在水质或水量字段。",
-    "系统仅提供决策支持，不直接控制水泵、灌溉设备或公共基础设施。",
+    "Thresholds are tuned on a single station (JKUAT, Kiambu) using ~3 weeks of data (Aug-Sep 2026); not yet validated across seasons.",
+    "No medical, public-health, or drinking-water-safety conclusions.",
+    "No precise irrigation volumes or crop-specific prescriptions.",
+    "No authoritative flood forecasting; a rainfall burst is only a storage/drainage heads-up.",
+    "No water-quality or water-quantity fields are assumed in the data.",
+    "Decision support only; the system never controls pumps, irrigation equipment, or public infrastructure.",
 ]
 
 
@@ -123,7 +123,7 @@ def _latest_evaluation_row(conn):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="MajiGuard API",
-        description="社区用水压力风险与行动建议系统（Hack The Weather）",
+        description="Community water-stress risk and action guidance (Hack The Weather)",
         version="1.0.0",
     )
     app.add_middleware(
@@ -143,7 +143,7 @@ def create_app() -> FastAPI:
     # ------------------------------------------------------------------
     @app.get("/api/current-risk")
     def current_risk(conn=Depends(get_db)):
-        """当前风险：优先读最新持久化结果；库为空时现场计算并落库。"""
+        """Current risk: serves the latest persisted evaluation; computes and stores one on first call."""
         row = _latest_evaluation_row(conn)
         if row is None:
             result = run_evaluation(conn)
@@ -155,22 +155,22 @@ def create_app() -> FastAPI:
     def trends(
         metric: str = Query(..., description="rainfall|temperature|humidity|wind_speed|wind_gust|pressure|risk_score"),
         period: str = Query("24h", description="24h|72h|7d"),
-        at: str | None = Query(None, description="按此 UTC 时刻回看（ISO 8601），默认现在"),
+        at: str | None = Query(None, description="Look back as of this UTC time (ISO 8601); defaults to now"),
         conn=Depends(get_db),
     ):
-        """关键指标时间序列：24h/72h 按小时聚合，7d 按天聚合。"""
+        """Time series for key metrics: hourly buckets for 24h/72h, daily for 7d."""
         if period not in TREND_PERIODS:
             raise HTTPException(status_code=400,
-                                detail=f"period 必须是 {sorted(TREND_PERIODS)} 之一")
+                                detail=f"period must be one of {sorted(TREND_PERIODS)}")
         if metric != "risk_score" and metric not in TREND_METRICS:
             raise HTTPException(
                 status_code=400,
-                detail=f"metric 必须是 {sorted(set(TREND_METRICS) | {'risk_score'})} 之一",
+                detail=f"metric must be one of {sorted(set(TREND_METRICS) | {'risk_score'})}",
             )
         try:
             at_dt = parse_utc(at) if at else utc_now()
         except (ValueError, TypeError):
-            raise HTTPException(status_code=400, detail=f"无法解析 at: {at!r}")
+            raise HTTPException(status_code=400, detail=f"Cannot parse at: {at!r}")
 
         since = fmt_utc(at_dt - TREND_PERIODS[period])
         until = fmt_utc(at_dt)
@@ -215,7 +215,7 @@ def create_app() -> FastAPI:
         limit: int = Query(50, ge=1, le=200),
         conn=Depends(get_db),
     ):
-        """告警/评估历史：每条都带触发规则、证据特征与行动建议（可追溯）。"""
+        """Alert / evaluation history: every entry carries its triggered rules, evidence features and recommendations (fully traceable)."""
         rows = conn.execute(
             "SELECT * FROM risk_evaluations "
             "ORDER BY window_end_utc DESC, evaluated_at_utc DESC LIMIT ?",
@@ -226,22 +226,22 @@ def create_app() -> FastAPI:
     # ------------------------------------------------------------------
     @app.get("/api/data-transparency")
     def data_transparency(conn=Depends(get_db)):
-        """数据透明度页：来源、字段、清洗策略、规则版本与已知局限。"""
+        """Data transparency page: data source, fields, cleaning policy, rules version and known limitations."""
         cfg = load_thresholds()
         return {
             "data_source": {
-                "name": "Conduit@Empathy1 环境站（3D FEWS NET / UCAR ICDP）",
+                "name": "Conduit@Empathy1 weather station (3D FEWS NET / UCAR ICDP)",
                 "site": "Kenya Kiambu, Site JKUAT IOT AWS",
                 "doi": "https://doi.org/10.5065/d6v1236q",
-                "sampling_interval": "1 分钟",
-                "aggregation": "趋势接口按小时（24h/72h）或按天（7d）聚合",
+                "sampling_interval": "1 minute",
+                "aggregation": "Trends aggregate hourly (24h/72h) or daily (7d)",
             },
             "fields_used": [
                 {"column": col, "unit": unit, "description": desc}
                 for col, unit, desc in FIELD_DOCS
             ],
             "validation": {
-                "policy": "越界或关键字段缺失 → is_valid=0 并写入 quality_flags_json，不删除数据",
+                "policy": "Out-of-range or missing key readings set is_valid=0 and are recorded in quality_flags_json; data is flagged, never deleted",
                 "ranges": VALIDATION_RANGES,
             },
             "risk_rules": {
@@ -252,7 +252,7 @@ def create_app() -> FastAPI:
                         "scope": r["scope"],
                         "weight": r["weight"],
                         "conditions": r["conditions"],
-                        "description_zh": r["description_zh"],
+                        "description": r["description"],
                     }
                     for r in cfg["rules"]
                 ],
@@ -262,9 +262,9 @@ def create_app() -> FastAPI:
 
     # ------------------------------------------------------------------
     @app.post("/api/refresh")
-    def refresh(source: str | None = Query(None, description="可选：重新导入的 CSV/目录路径"),
+    def refresh(source: str | None = Query(None, description="Optional: CSV file or directory to re-ingest"),
                 conn=Depends(get_db)):
-        """开发 / Demo 用：可选重新导入 CSV，然后重新评估并落库。"""
+        """Dev / demo only: optionally re-ingest CSVs, then re-evaluate and persist."""
         ingest_summary = None
         if source:
             ingest_summary = ingest_csv(conn, source)

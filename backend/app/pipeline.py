@@ -97,7 +97,7 @@ def _print_summary(result: dict) -> None:
         "confidence": result["confidence"],
         "burst_alert": result["burst_alert"],
         "triggers": [
-            {"id": t["id"], "description_zh": t["description_zh"], "observed": t["observed"]}
+            {"id": t["id"], "description": t["description"], "observed": t["observed"]}
             for t in result["triggers"]
         ],
         "recommendations": result["recommendations"],

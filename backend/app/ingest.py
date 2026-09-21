@@ -1,8 +1,9 @@
 """Official Conduit GeoCSV -> weather_observations ingestion.
 
 The ingestion **flags** suspicious data instead of deleting it (plan section
-"对可疑数据打标而不是静默删除"): out-of-range or missing key readings set
-is_valid = 0 and append a human-readable entry to quality_flags_json.
+"flag suspicious data instead of silently dropping it"): out-of-range or
+missing key readings set is_valid = 0 and append a human-readable entry to
+quality_flags_json.
 
 CLI:
     python -m app.ingest --source ../RainData
