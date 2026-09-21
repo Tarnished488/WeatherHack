@@ -20,15 +20,16 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import load_thresholds
 from .db import DEFAULT_DB_PATH, connect, ensure_schema
-from .features import WINDOW_24H, WINDOW_72H, WINDOW_7D, fmt_utc, parse_utc, utc_now
+from .features import WINDOW_24H, WINDOW_72H, WINDOW_7D, fmt_utc, latest_observation_time, parse_utc, utc_now
 from .ingest import VALIDATION_RANGES, ingest_csv
-from .pipeline import run_evaluation
+from .pipeline import run_daily_evaluations, run_evaluation
 from .conduit_client import ConduitClientError
 from .refresh_service import refresh_from_conduit
 
@@ -37,7 +38,23 @@ CORS_ORIGINS = [
     o.strip() for o in os.environ.get("MAJIGUARD_CORS_ORIGINS", "*").split(",") if o.strip()
 ]
 
-TREND_PERIODS = {"24h": WINDOW_24H, "72h": WINDOW_72H, "7d": WINDOW_7D}
+TREND_PERIODS = {
+    # Current dashboard ranges.
+    "day": WINDOW_24H,
+    "week": WINDOW_7D,
+    "month": timedelta(days=30),
+    "three_months": timedelta(days=90),
+    # Kept for existing API consumers and tests.
+    "24h": WINDOW_24H,
+    "72h": WINDOW_72H,
+    "7d": WINDOW_7D,
+}
+TREND_BUCKETS = {
+    "day": "hour", "week": "day", "month": "day", "three_months": "day",
+    "24h": "hour", "72h": "hour", "7d": "day",
+}
+REFRESH_WINDOWS = {"day", "week", "month", "three_months"}
+CALENDAR_DAY_COUNTS = {"day": 1, "week": 7, "month": 30, "three_months": 90}
 
 # metric -> (sql expression builder kind, column, description)
 TREND_METRICS = {
@@ -48,6 +65,15 @@ TREND_METRICS = {
     "wind_gust": ("agg", "MAX(wind_gust)", "Max wind gust (m/s)"),
     "pressure": ("agg", "AVG(press_bmx)", "Mean pressure (hPa)"),
 }
+
+
+def refresh_dates_for_window(window: str) -> tuple[str, str]:
+    """Return inclusive UTC dates for a frontend-selected refresh window."""
+    if window not in REFRESH_WINDOWS:
+        raise ValueError(f"window must be one of {sorted(REFRESH_WINDOWS)}")
+    end = utc_now().date()
+    start = end - timedelta(days=CALENDAR_DAY_COUNTS[window] - 1)
+    return start.isoformat(), end.isoformat()
 
 FIELD_DOCS = [
     ("rg1", "mm", "Rain gauge 1 per-minute rainfall"),
@@ -72,6 +98,16 @@ KNOWN_LIMITATIONS = [
     "Decision support only; the system never controls pumps, irrigation equipment, or public infrastructure.",
 ]
 
+SITE_METADATA = {
+    "id": "jkuat-iot-aws-61",
+    "name": "JKUAT IOT AWS",
+    "locality": "Juja",
+    "county": "Kiambu",
+    "country": "Kenya",
+    "latitude": -1.099736,
+    "longitude": 37.014528,
+}
+
 
 def get_db():
     """One connection per request; schema ensured (idempotent)."""
@@ -87,6 +123,7 @@ def _evaluation_payload(row) -> dict:
     """Shape a risk_evaluations row for the frontend."""
     blob = json.loads(row["features_json"])
     return {
+        "site": SITE_METADATA,
         "window_end_utc": row["window_end_utc"],
         "evaluated_at_utc": row["evaluated_at_utc"],
         "rules_version": row["rules_version"],
@@ -103,6 +140,7 @@ def _evaluation_payload(row) -> dict:
 def _result_payload(result: dict) -> dict:
     """Shape an in-memory evaluation result (same keys as _evaluation_payload)."""
     return {
+        "site": SITE_METADATA,
         "window_end_utc": result["window_end_utc"],
         "evaluated_at_utc": result["evaluated_at_utc"],
         "rules_version": result["rules_version"],
@@ -141,7 +179,7 @@ def create_app() -> FastAPI:
     @app.get("/")
     def root():
         return {"service": "MajiGuard API", "docs": "/docs",
-                "endpoints": ["/api/current-risk", "/api/trends", "/api/alerts",
+                "endpoints": ["/api/current-risk", "/api/trends", "/api/risk-distribution", "/api/alerts",
                               "/api/data-transparency", "/api/refresh"]}
 
     # ------------------------------------------------------------------
@@ -149,7 +187,8 @@ def create_app() -> FastAPI:
     def current_risk(conn=Depends(get_db)):
         """Current risk: serves the latest persisted evaluation; computes and stores one on first call."""
         row = _latest_evaluation_row(conn)
-        if row is None:
+        current_rules_version = load_thresholds()["version"]
+        if row is None or row["rules_version"] != current_rules_version:
             result = run_evaluation(conn)
             return _result_payload(result)
         return _evaluation_payload(row)
@@ -158,8 +197,8 @@ def create_app() -> FastAPI:
     @app.get("/api/trends")
     def trends(
         metric: str = Query(..., description="rainfall|temperature|humidity|wind_speed|wind_gust|pressure|risk_score"),
-        period: str = Query("24h", description="24h|72h|7d"),
-        at: str | None = Query(None, description="Look back as of this UTC time (ISO 8601); defaults to now"),
+        period: str = Query("day", description="day|week|month|three_months"),
+        at: str | None = Query(None, description="Look back as of this UTC time (ISO 8601); defaults to latest observation"),
         conn=Depends(get_db),
     ):
         """Time series for key metrics: hourly buckets for 24h/72h, daily for 7d."""
@@ -172,21 +211,25 @@ def create_app() -> FastAPI:
                 detail=f"metric must be one of {sorted(set(TREND_METRICS) | {'risk_score'})}",
             )
         try:
-            at_dt = parse_utc(at) if at else utc_now()
+            latest = latest_observation_time(conn)
+            at_dt = parse_utc(at) if at else (parse_utc(latest) if latest else utc_now())
         except (ValueError, TypeError):
             raise HTTPException(status_code=400, detail=f"Cannot parse at: {at!r}")
 
         since = fmt_utc(at_dt - TREND_PERIODS[period])
         until = fmt_utc(at_dt)
-        bucket_len = 10 if period == "7d" else 13  # 'YYYY-MM-DD' vs 'YYYY-MM-DDTHH'
+        bucket = TREND_BUCKETS[period]
+        bucket_len = 10 if bucket == "day" else 13  # 'YYYY-MM-DD' vs 'YYYY-MM-DDTHH'
 
         if metric == "risk_score":
+            rules_version = load_thresholds()["version"]
             sql = (
                 f"SELECT substr(window_end_utc, 1, {bucket_len}) AS b, AVG(risk_score) AS v "
                 "FROM risk_evaluations WHERE window_end_utc >= ? AND window_end_utc <= ? "
+                "AND rules_version = ? "
                 "GROUP BY b ORDER BY b"
             )
-            rows = conn.execute(sql, (since, until)).fetchall()
+            rows = conn.execute(sql, (since, until, rules_version)).fetchall()
         else:
             kind, expr, _ = TREND_METRICS[metric]
             if kind == "rain":
@@ -206,10 +249,85 @@ def create_app() -> FastAPI:
         return {
             "metric": metric,
             "period": period,
-            "bucket": "day" if period == "7d" else "hour",
+            "bucket": bucket,
             "points": [
                 {"t": r["b"], "value": round(r["v"], 3) if r["v"] is not None else None}
                 for r in rows
+            ],
+        }
+
+    # ------------------------------------------------------------------
+    @app.get("/api/risk-distribution")
+    def risk_distribution(
+        period: str = Query("week", description="day|week|month|three_months"),
+        at: str | None = Query(None, description="区间结束 UTC 时间；默认使用最新观测"),
+        conn=Depends(get_db),
+    ):
+        """Daily High/Medium/Low probabilities for the selected time range."""
+        if period not in REFRESH_WINDOWS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"period must be one of {sorted(REFRESH_WINDOWS)}",
+            )
+        try:
+            latest = latest_observation_time(conn)
+            at_dt = parse_utc(at) if at else (parse_utc(latest) if latest else utc_now())
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail=f"Cannot parse at: {at!r}")
+
+        day_count = CALENDAR_DAY_COUNTS[period]
+        since_date = at_dt.date() - timedelta(days=day_count - 1)
+        since_dt = at_dt.replace(
+            year=since_date.year,
+            month=since_date.month,
+            day=since_date.day,
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+        # Backfill is idempotent: one row per daily final observation/rules version.
+        cfg = load_thresholds()
+        run_daily_evaluations(conn, start_utc=since_dt, end_utc=at_dt, thresholds=cfg)
+        raw_rows = conn.execute(
+            "SELECT window_end_utc, risk_score, risk_level, confidence "
+            "FROM risk_evaluations WHERE window_end_utc >= ? AND window_end_utc <= ? "
+            "AND rules_version = ? "
+            "ORDER BY window_end_utc",
+            (fmt_utc(since_dt), fmt_utc(at_dt), cfg["version"]),
+        ).fetchall()
+        # Keep exactly one result per calendar day even if an older database
+        # contains additional ad-hoc intraday evaluations.
+        by_day = {row["window_end_utc"][:10]: row for row in raw_rows}
+        rows = [by_day[day] for day in sorted(by_day)]
+        counts = {"High": 0, "Medium": 0, "Low": 0}
+        for row in rows:
+            if row["risk_level"] in counts:
+                counts[row["risk_level"]] += 1
+        total = sum(counts.values())
+        levels = [
+            {
+                "level": level,
+                "count": counts[level],
+                "probability": round(counts[level] * 100 / total, 1) if total else 0.0,
+            }
+            for level in ("High", "Medium", "Low")
+        ]
+        return {
+            "period": period,
+            "from": fmt_utc(since_dt),
+            "to": fmt_utc(at_dt),
+            "total_days": total,
+            "levels": levels,
+            "daily": [
+                {
+                    "date": row["window_end_utc"][:10],
+                    "window_end_utc": row["window_end_utc"],
+                    "risk_score": row["risk_score"],
+                    "risk_level": row["risk_level"],
+                    "confidence": row["confidence"],
+                }
+                for row in rows
             ],
         }
 
@@ -236,6 +354,7 @@ def create_app() -> FastAPI:
             "data_source": {
                 "name": "Conduit@Empathy1 weather station (3D FEWS NET / UCAR ICDP)",
                 "site": "Kenya Kiambu, Site JKUAT IOT AWS",
+                "location": SITE_METADATA,
                 "doi": "https://doi.org/10.5065/d6v1236q",
                 "sampling_interval": "1 minute",
                 "aggregation": "Trends aggregate hourly (24h/72h) or daily (7d)",
@@ -250,6 +369,8 @@ def create_app() -> FastAPI:
             },
             "risk_rules": {
                 "version": cfg["version"],
+                "scoring_method": "Continuous weighted 0-100 sensor-severity index",
+                "continuous_scoring": cfg["continuous_scoring"],
                 "rules": [
                     {
                         "id": r["id"],
@@ -266,32 +387,41 @@ def create_app() -> FastAPI:
 
     # ------------------------------------------------------------------
     @app.post("/api/refresh")
-    def refresh(source: str | None = Query(None, description="Optional: CSV file or directory to re-ingest"),
-                conn=Depends(get_db)):
-        """Dev / demo only: optionally re-ingest CSVs, then re-evaluate and persist."""
     def refresh(
         source: str | None = Query(None, description="Demo：本地 CSV/目录路径"),
         fromdate: str | None = Query(None, description="Conduit 起始日期，例如 2026-09-01"),
         todate: str | None = Query(None, description="Conduit 结束日期，例如 2026-09-02"),
+        window: str | None = Query(None, description="Conduit 数据窗口：day|week|month|three_months"),
         conn=Depends(get_db),
     ):
         """刷新风险：本地 CSV Demo 或受保护的 Conduit POST 拉取。"""
-        if source and (fromdate or todate):
-            raise HTTPException(status_code=400, detail="source 不能与 fromdate/todate 同时使用")
-        if bool(fromdate) != bool(todate):
+        if source and (fromdate or todate or window):
+            raise HTTPException(status_code=400, detail="source 不能与 Conduit 日期或 window 同时使用")
+        if window and (fromdate or todate):
+            raise HTTPException(status_code=400, detail="window 不能与 fromdate/todate 同时使用")
+        if window:
+            try:
+                fromdate, todate = refresh_dates_for_window(window)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        elif bool(fromdate) != bool(todate):
             raise HTTPException(status_code=400, detail="fromdate 和 todate 必须同时提供")
         if fromdate and todate:
             try:
-                return refresh_from_conduit(conn, fromdate, todate)
+                refreshed = refresh_from_conduit(conn, fromdate, todate)
+                refreshed["evaluation"] = _result_payload(refreshed["evaluation"])
+                return refreshed
             except (ConduitClientError, ValueError) as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
         ingest_summary = None
         if source:
             ingest_summary = ingest_csv(conn, source)
+        daily_results = run_daily_evaluations(conn)
         result = run_evaluation(conn)
         return {
             "ingest": ingest_summary,
             "evaluation": _result_payload(result),
+            "daily_evaluations": len(daily_results),
         }
 
     return app

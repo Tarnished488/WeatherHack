@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from app.pipeline import NoDataError, run_evaluation
+from app.pipeline import NoDataError, run_daily_evaluations, run_evaluation
 from tests.conftest import insert_obs
 
 UTC = timezone.utc
@@ -67,6 +67,27 @@ def test_pipeline_rerun_is_idempotent(conn, thresholds):
     assert second == first
     count = conn.execute("SELECT COUNT(*) FROM risk_evaluations").fetchone()[0]
     assert count == 1
+
+
+def test_daily_pipeline_calculates_every_observation_day(conn, thresholds):
+    for day in range(3):
+        date = datetime(2026, 9, 10 + day, tzinfo=UTC)
+        insert_obs(conn, fmt(date + timedelta(hours=8)), rg1=0.0, rg2=0.0,
+                   temp_sht=20.0, humidity_sht=60.0, wind_spd=1.0)
+        insert_obs(conn, fmt(date + timedelta(hours=20)), rg1=0.0, rg2=0.0,
+                   temp_sht=21.0, humidity_sht=58.0, wind_spd=1.0)
+
+    results = run_daily_evaluations(conn, thresholds=thresholds)
+
+    assert len(results) == 3
+    assert [r["window_end_utc"][:10] for r in results] == [
+        "2026-09-10", "2026-09-11", "2026-09-12",
+    ]
+    assert [r["quality"]["latest_observed_at_utc"] for r in results] == [
+        "2026-09-10T20:00:00Z", "2026-09-11T20:00:00Z", "2026-09-12T20:00:00Z",
+    ]
+    count = conn.execute("SELECT COUNT(*) FROM risk_evaluations").fetchone()[0]
+    assert count == 3
 
 
 def test_stale_data_lowers_confidence(conn, thresholds):

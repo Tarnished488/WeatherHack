@@ -12,12 +12,10 @@ const ACCENT_BG: Record<Accent, string> = {
 export function MetricCard({
   label,
   value,
-  hint,
   accent = 'slate',
 }: {
   label: string
   value: string
-  hint?: string
   accent?: Accent
 }) {
   return (
@@ -28,7 +26,6 @@ export function MetricCard({
         <div className={`h-2 w-2 rounded-full bg-gradient-to-br ${ACCENT_BG[accent]} shadow-sm`} />
       </div>
       <p className="mt-2 font-mono text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">{value}</p>
-      {hint ? <p className="mt-1 font-mono text-[11px] text-slate-400">{hint}</p> : null}
     </div>
   )
 }

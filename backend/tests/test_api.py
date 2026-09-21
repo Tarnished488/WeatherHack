@@ -53,8 +53,8 @@ def test_current_risk_auto_computes_and_persists(client, conn, thresholds):
     resp = client.get("/api/current-risk")
     assert resp.status_code == 200
     body = resp.json()
-    # dry week: dry_72h(25) + dry_7d_baseline(10) = 35 -> Medium
-    assert body["risk_score"] == 35
+    # Continuous score: dry conditions dominate; mild temperature/humidity keep it Medium.
+    assert body["risk_score"] == 56.9
     assert body["risk_level"] == "Medium"
     assert any(t["id"] == "dry_72h" for t in body["triggers"])
     assert set(body["recommendations"]) == {"residents", "farmers", "managers"}
@@ -66,7 +66,7 @@ def test_current_risk_auto_computes_and_persists(client, conn, thresholds):
     # second call serves the persisted row (same payload keys)
     resp2 = client.get("/api/current-risk")
     assert resp2.status_code == 200
-    assert resp2.json()["risk_score"] == 35
+    assert resp2.json()["risk_score"] == 56.9
 
 
 def test_trends_environment_metrics(client, conn):
@@ -101,7 +101,7 @@ def test_trends_risk_score(client, conn, thresholds):
     body = client.get("/api/trends", params={
         "metric": "risk_score", "period": "7d", "at": fmt(END)}).json()
     assert len(body["points"]) == 1
-    assert body["points"][0]["value"] == 35.0
+    assert body["points"][0]["value"] == 56.9
 
 
 def test_trends_validates_params(client):
@@ -110,6 +110,21 @@ def test_trends_validates_params(client):
         "metric": "temperature", "period": "30h"}).status_code == 400
     assert client.get("/api/trends", params={
         "metric": "temperature", "at": "not-a-date"}).status_code == 400
+
+
+def test_risk_distribution_backfills_one_result_per_day(client, conn):
+    seed_quiet_week(conn)
+    response = client.get("/api/risk-distribution", params={
+        "period": "week", "at": fmt(END),
+    })
+    assert response.status_code == 200
+    body = response.json()
+    assert body["period"] == "week"
+    assert body["total_days"] == len(body["daily"])
+    assert body["total_days"] == 7
+    assert len({point["date"] for point in body["daily"]}) == body["total_days"]
+    assert sum(level["count"] for level in body["levels"]) == body["total_days"]
+    assert abs(sum(level["probability"] for level in body["levels"]) - 100.0) <= 0.1
 
 
 def test_alerts_history(client, conn, thresholds):

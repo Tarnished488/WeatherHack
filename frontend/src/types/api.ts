@@ -11,7 +11,7 @@ export type TrendMetric =
   | 'pressure'
   | 'risk_score'
 
-export type TrendPeriod = '24h' | '72h' | '7d'
+export type TrendPeriod = 'day' | 'week' | 'month' | 'three_months'
 export type TrendBucket = 'hour' | 'day'
 
 export interface Trigger {
@@ -49,6 +49,15 @@ export interface DataQuality {
 }
 
 export interface Evaluation {
+  site: {
+    id: string
+    name: string
+    locality: string
+    county: string
+    country: string
+    latitude: number
+    longitude: number
+  }
   window_end_utc: string
   evaluated_at_utc: string
   rules_version: string
@@ -71,6 +80,29 @@ export interface TrendsResponse {
   period: TrendPeriod
   bucket: TrendBucket
   points: TrendPoint[]
+}
+
+export interface RiskDistributionLevel {
+  level: RiskLevel
+  count: number
+  probability: number
+}
+
+export interface DailyRiskPoint {
+  date: string
+  window_end_utc: string
+  risk_score: number
+  risk_level: RiskLevel
+  confidence: number
+}
+
+export interface RiskDistributionResponse {
+  period: TrendPeriod
+  from: string
+  to: string
+  total_days: number
+  levels: RiskDistributionLevel[]
+  daily: DailyRiskPoint[]
 }
 
 export interface AlertsResponse {
@@ -124,4 +156,5 @@ export interface RefreshResponse {
     rows_skipped?: number
   } | null
   evaluation: Evaluation
+  daily_evaluations?: number
 }

@@ -34,7 +34,14 @@ export const METRIC_LABEL: Record<TrendMetric, string> = {
   risk_score: 'Risk Score',
 }
 
-export const PERIODS: TrendPeriod[] = ['24h', '72h', '7d']
+export const PERIODS: TrendPeriod[] = ['day', 'week', 'month', 'three_months']
+
+export const PERIOD_LABEL: Record<TrendPeriod, string> = {
+  day: 'Day',
+  week: 'Week',
+  month: 'Month',
+  three_months: '3 months',
+}
 
 export const TREND_METRICS: TrendMetric[] = [
   'rainfall',

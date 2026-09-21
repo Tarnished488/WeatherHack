@@ -2,7 +2,9 @@ import type { Trigger } from '../types/api'
 import { formatFieldLabel, formatNumber, SCOPE_LABEL, t } from '../lib/format'
 
 export function TriggerList({ triggers }: { triggers: Trigger[] }) {
-  if (triggers.length === 0) {
+  const visibleTriggers = triggers.filter((trigger) => trigger.scope !== 'quality')
+
+  if (visibleTriggers.length === 0) {
     return (
       <div className="rounded-xl border border-dashed border-slate-200 bg-white/50 p-4 text-center text-sm text-slate-500">
         No stress rules triggered at this time.
@@ -12,7 +14,7 @@ export function TriggerList({ triggers }: { triggers: Trigger[] }) {
 
   return (
     <ol className="space-y-3">
-      {triggers.map((trigger, index) => (
+      {visibleTriggers.map((trigger, index) => (
         <li key={trigger.id} className="group rounded-xl border border-slate-200/80 bg-gradient-to-br from-slate-50/80 to-white p-4 transition-all hover:border-slate-200 hover:shadow-md hover:shadow-slate-900/5">
           <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-[11px] font-bold text-white shadow-sm">

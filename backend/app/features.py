@@ -47,8 +47,18 @@ def _to_float(value) -> float | None:
         return None
 
 
-def latest_observation_time(conn: sqlite3.Connection) -> str | None:
-    row = conn.execute("SELECT MAX(observed_at_utc) FROM weather_observations").fetchone()
+def latest_observation_time(
+    conn: sqlite3.Connection,
+    at_utc: datetime | None = None,
+) -> str | None:
+    """Return the newest observation, optionally capped at a historical instant."""
+    if at_utc is None:
+        row = conn.execute("SELECT MAX(observed_at_utc) FROM weather_observations").fetchone()
+    else:
+        row = conn.execute(
+            "SELECT MAX(observed_at_utc) FROM weather_observations WHERE observed_at_utc <= ?",
+            (fmt_utc(at_utc),),
+        ).fetchone()
     return row[0] if row else None
 
 
@@ -139,7 +149,10 @@ def _quality_metrics(rows_1h, rows_24h, rows_7d, window_end, at_utc, latest_dt) 
     invalid_ratio = (
         sum(1 for r in rows_24h if not r["is_valid"]) / len(rows_24h) if rows_24h else 0.0
     )
-    staleness_minutes = max(0.0, (at_utc - window_end).total_seconds() / 60.0)
+    staleness_minutes = max(
+        0.0,
+        (at_utc - (latest_dt or window_end)).total_seconds() / 60.0,
+    )
 
     return {
         "window_end_utc": fmt_utc(window_end),
@@ -167,15 +180,18 @@ def extract_features(
     cfg = feature_cfg or {}
     rain_day_mm = float(cfg.get("rain_day_mm", 1.0))
     ref_now = now_utc or utc_now()
-    latest_iso = latest_observation_time(conn)
-    if latest_iso is None:
+    at = at_utc or ref_now
+    latest_before_at_iso = latest_observation_time(conn, at_utc=at)
+    latest_any_iso = latest_observation_time(conn)
+    if latest_before_at_iso is None or latest_any_iso is None:
         return {}, {"latest_observed_at_utc": None}
 
-    latest_dt = parse_utc(latest_iso)
+    latest_dt = parse_utc(latest_before_at_iso)
+    latest_any_dt = parse_utc(latest_any_iso)
     # Evaluate windows ending at the newest data available at or before at_utc;
-    # the remaining gap to at_utc is exactly the staleness.
-    at = at_utc or ref_now
-    window_end = min(at, latest_dt)
+    # explicit historical timestamps remain the window boundary even if that
+    # instant falls in a data gap. Future/current requests stop at newest data.
+    window_end = min(at, latest_any_dt)
 
     rows = _load_rows(conn, window_end - WINDOW_7D)
     end = window_end

@@ -18,7 +18,7 @@ import sqlite3
 from .config import DEFAULT_THRESHOLD_PATH, load_thresholds
 from .db import DEFAULT_DB_PATH, connect, ensure_schema
 from .engine import evaluate
-from .features import extract_features, fmt_utc, latest_observation_time, utc_now
+from .features import extract_features, fmt_utc, latest_observation_time, parse_utc, utc_now
 
 
 class NoDataError(RuntimeError):
@@ -52,6 +52,50 @@ def run_evaluation(
     # Step 5: persist (upsert on window_end + rules version => re-runs are safe).
     _persist(conn, result)
     return result
+
+
+def run_daily_evaluations(
+    conn: sqlite3.Connection,
+    start_utc=None,
+    end_utc=None,
+    thresholds: dict | None = None,
+) -> list[dict]:
+    """Calculate and persist one risk result for every calendar day with data.
+
+    Each day is evaluated at its final observation. Historical calculations are
+    therefore isolated from observations that arrived on later days.
+    """
+    ensure_schema(conn)
+    clauses: list[str] = []
+    params: list[str] = []
+    if start_utc is not None:
+        clauses.append("observed_at_utc >= ?")
+        params.append(fmt_utc(start_utc))
+    if end_utc is not None:
+        clauses.append("observed_at_utc <= ?")
+        params.append(fmt_utc(end_utc))
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    rows = conn.execute(
+        "SELECT substr(observed_at_utc, 1, 10) AS observation_day, "
+        "MAX(observed_at_utc) AS day_end_utc "
+        f"FROM weather_observations {where} "
+        "GROUP BY observation_day ORDER BY observation_day",
+        params,
+    ).fetchall()
+
+    cfg = thresholds or load_thresholds()
+    results: list[dict] = []
+    for row in rows:
+        day_end = parse_utc(row["day_end_utc"])
+        results.append(
+            run_evaluation(
+                conn,
+                at_utc=day_end,
+                now_utc=day_end,
+                thresholds=cfg,
+            )
+        )
+    return results
 
 
 def _persist(conn: sqlite3.Connection, result: dict) -> None:

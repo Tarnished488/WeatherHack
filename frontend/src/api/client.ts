@@ -2,6 +2,7 @@ import type {
   AlertsResponse,
   Evaluation,
   RefreshResponse,
+  RiskDistributionResponse,
   TransparencyResponse,
   TrendMetric,
   TrendPeriod,
@@ -20,8 +21,16 @@ export class ApiError extends Error {
   }
 }
 
+// Empty in local development: Vite proxies /api to FastAPI. Set
+// VITE_API_BASE_URL for a separately hosted frontend, e.g. http://127.0.0.1:8000.
+const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/$/, '')
+
+function apiUrl(path: string): string {
+  return `${apiBaseUrl}${path}`
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, init)
+  const response = await fetch(apiUrl(path), init)
   if (!response.ok) {
     let detail = response.statusText || `HTTP ${response.status}`
     try {
@@ -52,6 +61,11 @@ export function getTrends(
   return request<TrendsResponse>(`/api/trends?${params.toString()}`)
 }
 
+export function getRiskDistribution(period: TrendPeriod): Promise<RiskDistributionResponse> {
+  const params = new URLSearchParams({ period })
+  return request<RiskDistributionResponse>(`/api/risk-distribution?${params.toString()}`)
+}
+
 export function getAlerts(limit = 50): Promise<AlertsResponse> {
   return request<AlertsResponse>(`/api/alerts?limit=${limit}`)
 }
@@ -60,7 +74,11 @@ export function getTransparency(): Promise<TransparencyResponse> {
   return request<TransparencyResponse>('/api/data-transparency')
 }
 
-export function postRefresh(source?: string): Promise<RefreshResponse> {
-  const params = source ? `?source=${encodeURIComponent(source)}` : ''
-  return request<RefreshResponse>(`/api/refresh${params}`, { method: 'POST' })
+export function postRefresh(fromdate: string, todate: string): Promise<RefreshResponse> {
+  const params = new URLSearchParams({ fromdate, todate })
+  return request<RefreshResponse>(`/api/refresh?${params.toString()}`, { method: 'POST' })
+}
+
+export function postRefreshWindow(window: TrendPeriod): Promise<RefreshResponse> {
+  return request<RefreshResponse>(`/api/refresh?${new URLSearchParams({ window }).toString()}`, { method: 'POST' })
 }

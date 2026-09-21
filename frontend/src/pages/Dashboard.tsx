@@ -1,16 +1,15 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { getCurrentRisk, postRefresh } from '../api/client'
 import { AdvicePanel } from '../components/AdvicePanel'
 import { MetricCard } from '../components/MetricCard'
+import { NationalRiskOverview } from '../components/NationalRiskOverview'
 import { RiskBadge } from '../components/RiskBadge'
 import { EmptyBlock, ErrorBlock, LoadingBlock, StatusBanner } from '../components/StatusBanner'
 import { TriggerList } from '../components/TriggerList'
 import {
-  describeField,
   errorMessage,
   formatNumber,
   formatUtc,
-  isStale,
   t,
   topStressTriggers,
 } from '../lib/format'
@@ -21,23 +20,39 @@ export function DashboardPage() {
   const loader = useCallback(() => getCurrentRisk(), [])
   const { data, error, loading, reload } = useApi(loader)
   const [role, setRole] = useState<AudienceRole>('residents')
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
   const [refreshing, setRefreshing] = useState(false)
-  const [refreshNote, setRefreshNote] = useState<string | null>(null)
+  const [distributionRefreshKey, setDistributionRefreshKey] = useState(0)
+  const [refreshMessage, setRefreshMessage] = useState<{ tone: 'info' | 'error'; title: string } | null>(null)
 
-  async function onRefresh() {
-    if (!window.confirm('Re-evaluate observations in the current database? This is a Demo-only action and will write a new evaluation.')) {
+  // The backend owns data ingestion and risk calculation. The UI polls only
+  // the read endpoint, so a page visit never exposes Conduit credentials or
+  // triggers duplicate ingestion.
+  useEffect(() => {
+    const intervalId = window.setInterval(reload, 30_000)
+    return () => window.clearInterval(intervalId)
+  }, [reload])
+
+  async function onFetchLatestData() {
+    if (!fromDate || !toDate) {
+      setRefreshMessage({ tone: 'error', title: 'Choose both a start date and an end date before fetching.' })
       return
     }
     setRefreshing(true)
-    setRefreshNote(null)
+    setRefreshMessage(null)
     try {
-      const result = await postRefresh()
-      setRefreshNote(
-        `Evaluation complete: ${result.evaluation.risk_level} / ${result.evaluation.risk_score}, rules ${result.evaluation.rules_version}`,
-      )
+      const result = await postRefresh(fromDate, toDate)
+      const ingest = result.ingest
+      setRefreshMessage({
+        tone: 'info',
+        title: `Source refresh completed: ${ingest?.rows_read ?? 0} received, ${ingest?.rows_inserted ?? 0} new observations stored, ${result.daily_evaluations ?? 0} daily risk results calculated.`,
+      })
       reload()
+      setDistributionRefreshKey((key) => key + 1)
     } catch (err) {
-      setRefreshNote(err instanceof Error ? err.message : String(err))
+      const detail = err instanceof Error ? err.message : String(err)
+      setRefreshMessage({ tone: 'error', title: `Source refresh failed: ${detail}` })
     } finally {
       setRefreshing(false)
     }
@@ -57,10 +72,8 @@ export function DashboardPage() {
 
   const quality = data.quality
   const features = data.features
-  const stale = isStale(quality?.staleness_minutes, data.confidence)
   const stress = topStressTriggers(data.triggers)
   const burst = data.triggers.filter((t) => t.scope === 'burst')
-  const qualityTriggers = data.triggers.filter((t) => t.scope === 'quality')
 
   return (
     <div className="space-y-6">
@@ -69,53 +82,49 @@ export function DashboardPage() {
           <div className="flex items-center gap-2">
             <span className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700">
               <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
-              Live
+              Backend sync · every 30s
             </span>
           </div>
-          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Risk Overview</h1>
+          <h1 className="mt-2 text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Kenya Water Risk Overview</h1>
           <p className="mt-1 text-sm text-slate-500">
             Interpretable water-stress assessment based on Conduit observations.
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-end gap-2 rounded-xl border border-slate-200 bg-white/80 p-2 shadow-sm backdrop-blur">
+          <label className="text-xs font-medium text-slate-600">
+            From
+            <input
+              type="date"
+              value={fromDate}
+              max={toDate || undefined}
+              onChange={(event) => setFromDate(event.target.value)}
+              className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/30"
+            />
+          </label>
+          <label className="text-xs font-medium text-slate-600">
+            To
+            <input
+              type="date"
+              value={toDate}
+              min={fromDate || undefined}
+              onChange={(event) => setToDate(event.target.value)}
+              className="mt-1 block rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-500/30"
+            />
+          </label>
           <button
             type="button"
-            onClick={reload}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur transition-all hover:bg-white hover:shadow"
+            onClick={onFetchLatestData}
+            disabled={refreshing || !fromDate || !toDate}
+            className="mb-0.5 inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 px-3 py-2 text-sm font-medium text-white shadow-md shadow-sky-500/25 transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <path d="M21 12a9 9 0 1 1-3-6.7L21 8"/>
-              <path d="M21 3v5h-5"/>
-            </svg>
-            Refresh
-          </button>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-md shadow-sky-500/25 transition-all hover:shadow-lg hover:shadow-sky-500/30 disabled:opacity-50"
-          >
-            {refreshing ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 animate-spin">
-                  <path d="M21 12a9 9 0 1 1-6.2-8.5"/>
-                </svg>
-                Evaluating…
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-                  <path d="M12 20h9"/>
-                  <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
-                </svg>
-                Demo Re-evaluate
-              </>
-            )}
+            {refreshing ? 'Fetching…' : 'Fetch source data'}
           </button>
         </div>
       </div>
 
-      {refreshNote ? <StatusBanner tone="info" title={refreshNote} /> : null}
+      {refreshMessage ? <StatusBanner tone={refreshMessage.tone} title={refreshMessage.title} /> : null}
+
+      <NationalRiskOverview evaluation={data} refreshKey={distributionRefreshKey} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
         <section className="space-y-5 rounded-2xl border border-slate-200/60 bg-white/80 p-6 shadow-lg shadow-slate-900/5 backdrop-blur">
@@ -158,18 +167,6 @@ export function DashboardPage() {
         <AdvicePanel evaluation={data} role={role} onRoleChange={setRole} />
       </div>
 
-      {stale ? (
-        <StatusBanner tone="warning" title="Data may be stale — confidence has been reduced">
-          Latest observation lags by ~{formatNumber(quality?.staleness_minutes, 0)} minutes. Treat results as limited evidence, not real-time complete monitoring.
-        </StatusBanner>
-      ) : null}
-
-      {qualityTriggers.map((trigger) => (
-        <StatusBanner key={trigger.id} tone="warning" title={t(trigger.description_zh)}>
-          <span className="font-mono text-xs">{trigger.id}</span>
-        </StatusBanner>
-      ))}
-
       {burst.map((trigger) => (
         <StatusBanner key={trigger.id} tone="info" title={t(trigger.description_zh)} />
       ))}
@@ -179,7 +176,7 @@ export function DashboardPage() {
           <div>
             <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Key Readings</h2>
             <p className="mt-0.5 text-xs text-slate-400">
-              Rolling aggregations — each card's sub-line is the exact validation / usage note from the Conduit field dictionary.
+              Validated rolling observations from the active Conduit station.
             </p>
           </div>
           <div className="rounded-lg border border-slate-200 bg-white/60 px-2.5 py-1 text-[10px] font-mono text-slate-500 backdrop-blur">
@@ -190,73 +187,61 @@ export function DashboardPage() {
           <MetricCard
             label="1-hour Rainfall"
             value={`${formatNumber(features?.rainfall_1h_mm)} mm`}
-            hint={describeField('rainfall_1h_mm')}
             accent="sky"
           />
           <MetricCard
             label="24-hour Rainfall"
             value={`${formatNumber(features?.rainfall_24h_mm)} mm`}
-            hint={describeField('rainfall_24h_mm')}
             accent="sky"
           />
           <MetricCard
             label="72-hour Rainfall"
             value={`${formatNumber(features?.rainfall_72h_mm)} mm`}
-            hint={describeField('rainfall_72h_mm')}
             accent="sky"
           />
           <MetricCard
             label="Rainy days · 7d"
             value={formatNumber(features?.rain_days_7d, 0)}
-            hint={describeField('rain_days_7d')}
             accent="indigo"
           />
           <MetricCard
             label="24h Max Temperature"
             value={`${formatNumber(features?.temp_max_24h_c)} °C`}
-            hint={describeField('temp_max_24h_c')}
             accent="rose"
           />
           <MetricCard
             label="24h Avg Temperature"
             value={`${formatNumber(features?.temp_avg_24h_c)} °C`}
-            hint={describeField('temp_avg_24h_c')}
             accent="rose"
           />
           <MetricCard
             label="24h Min Humidity"
             value={`${formatNumber(features?.humidity_min_24h_pct)} %`}
-            hint={describeField('humidity_min_24h_pct')}
             accent="emerald"
           />
           <MetricCard
             label="24h Avg Humidity"
             value={`${formatNumber(features?.humidity_avg_24h_pct)} %`}
-            hint={describeField('humidity_avg_24h_pct')}
             accent="emerald"
           />
           <MetricCard
             label="24h Max Wind Speed"
             value={`${formatNumber(features?.wind_spd_max_24h_ms)} m/s`}
-            hint={describeField('wind_spd_max_24h_ms')}
             accent="amber"
           />
           <MetricCard
             label="24h Max Wind Gust"
             value={`${formatNumber(features?.wind_gust_max_24h_ms)} m/s`}
-            hint={describeField('wind_gust_max_24h_ms')}
             accent="amber"
           />
           <MetricCard
             label="24h Max Heat Index"
             value={`${formatNumber(features?.heat_idx_max_24h_c)} °C`}
-            hint={describeField('heat_idx_max_24h_c')}
             accent="rose"
           />
           <MetricCard
             label="Data Samples · 24h"
             value={formatNumber(quality?.sample_count_24h, 0)}
-            hint={`${describeField('sample_count_24h')} Coverage ${formatNumber((quality?.coverage_24h ?? 0) * 100, 0)} %.`}
             accent="slate"
           />
         </div>

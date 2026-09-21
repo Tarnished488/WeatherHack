@@ -20,7 +20,7 @@ export function Layout() {
             </div>
             <div>
               <p className="text-lg font-bold tracking-tight text-slate-900">MajiGuard</p>
-              <p className="text-xs text-slate-500">Community water stress risk &amp; action guidance · Conduit-powered</p>
+              <p className="text-xs text-slate-500">Kenya national water-risk intelligence · Conduit-powered</p>
             </div>
           </div>
           <nav className="flex flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white/60 p-1 backdrop-blur">

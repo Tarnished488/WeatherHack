@@ -5,7 +5,7 @@ config/risk_thresholds.json (versioned) — this module only interprets them,
 so the engine behaviour can be tuned without touching code.
 
 Outputs per evaluation:
-  - risk_score       0~100 (sum of triggered 'stress' rule weights, capped)
+  - risk_score       0~100 (continuous weighted sensor-severity index)
   - risk_level       Low / Medium / High
   - confidence       0~1.0, penalised for gaps, invalid rows, staleness
   - triggers         every fired rule + data-quality alerts, with evidence
@@ -60,6 +60,34 @@ def level_for_score(score: float, risk_levels: dict) -> str:
     if score <= risk_levels["medium_max"]:
         return "Medium"
     return "High"
+
+
+def compute_risk_score(features: dict, scoring_cfg: list[dict]) -> float:
+    """Return a continuous 0-100 index from weighted sensor severities.
+
+    Each component is linearly interpolated between its low-risk and high-risk
+    sensor values, then clamped to 0..1. Missing components are excluded and
+    the available weights are re-normalised; confidence separately reports the
+    reduced evidence quality.
+    """
+    weighted_severity = 0.0
+    available_weight = 0.0
+    for component in scoring_cfg:
+        value = features.get(component["feature"])
+        if value is None:
+            continue
+        low_risk = float(component["low_risk_value"])
+        high_risk = float(component["high_risk_value"])
+        if high_risk == low_risk:
+            raise EngineError(f"Scoring range cannot be zero: {component['id']}")
+        severity = (float(value) - low_risk) / (high_risk - low_risk)
+        severity = max(0.0, min(1.0, severity))
+        weight = max(0.0, float(component["weight"]))
+        weighted_severity += severity * weight
+        available_weight += weight
+    if available_weight == 0.0:
+        return 0.0
+    return round(weighted_severity / available_weight * 100.0, 1)
 
 
 def compute_confidence(features: dict, quality: dict, ccfg: dict) -> float:
@@ -143,7 +171,6 @@ def _merge_recommendations(level: str, triggered_rules: list[dict], thresholds: 
 def evaluate(features: dict, quality: dict, thresholds: dict) -> dict:
     """Run all rules and assemble the full, explainable result."""
     triggers: list[dict] = []
-    score = 0
     burst = False
 
     for rule in thresholds["rules"]:
@@ -161,12 +188,10 @@ def evaluate(features: dict, quality: dict, thresholds: dict) -> dict:
                 "recommendations": rule.get("recommendations", {}),
             }
         )
-        if rule["scope"] == "stress":
-            score += rule["weight"]
-        elif rule["scope"] == "burst":
+        if rule["scope"] == "burst":
             burst = True
 
-    score = min(100, score)
+    score = compute_risk_score(features, thresholds["continuous_scoring"])
     level = level_for_score(score, thresholds["risk_levels"])
     confidence = compute_confidence(features, quality, thresholds["confidence"])
     triggers.extend(_quality_alerts(quality, thresholds["confidence"]))

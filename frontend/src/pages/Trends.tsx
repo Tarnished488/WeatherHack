@@ -8,13 +8,14 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
-import { getTrends } from '../api/client'
+import { getTrends, postRefreshWindow } from '../api/client'
 import { EmptyBlock, ErrorBlock, LoadingBlock, StatusBanner } from '../components/StatusBanner'
 import {
   errorMessage,
   formatNumber,
   formatUtc,
   METRIC_LABEL,
+  PERIOD_LABEL,
   PERIODS,
   TREND_METRICS,
 } from '../lib/format'
@@ -42,12 +43,32 @@ function formatXAxis(t: string, bucket: 'hour' | 'day') {
 
 export function TrendsPage() {
   const [metric, setMetric] = useState<TrendMetric>('rainfall')
-  const [period, setPeriod] = useState<TrendPeriod>('7d')
+  const [period, setPeriod] = useState<TrendPeriod>('week')
   const loader = useCallback(() => getTrends(metric, period), [metric, period])
   const { data, error, loading, reload } = useApi(loader)
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshMessage, setRefreshMessage] = useState<{ tone: 'info' | 'error'; title: string } | null>(null)
+
+  async function onFetchRange() {
+    setRefreshing(true)
+    setRefreshMessage(null)
+    try {
+      const result = await postRefreshWindow(period)
+      setRefreshMessage({
+        tone: 'info',
+        title: `${PERIOD_LABEL[period]} source refresh completed: ${result.ingest?.rows_read ?? 0} received, ${result.ingest?.rows_inserted ?? 0} new observations stored.`,
+      })
+      reload()
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err)
+      setRefreshMessage({ tone: 'error', title: `${PERIOD_LABEL[period]} source refresh failed: ${detail}` })
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const points = (data?.points ?? []).filter((p) => p.value != null)
-  const bucket = data?.bucket ?? (period === '7d' ? 'day' : 'hour')
+  const bucket = data?.bucket ?? (period === 'day' ? 'hour' : 'day')
 
   const stats = useMemo(() => {
     if (points.length === 0) return null
@@ -67,7 +88,7 @@ export function TrendsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Trends</h1>
-          <p className="mt-1 text-sm text-slate-500">24h/72h aggregated hourly, 7d aggregated daily. Pulled from observations or persisted evaluations.</p>
+          <p className="mt-1 text-sm text-slate-500">Day is aggregated hourly; week, month, and three months are aggregated daily. The endpoint anchors on the newest stored observation.</p>
         </div>
         <div className="flex flex-wrap gap-2 items-center">
           <select
@@ -93,23 +114,22 @@ export function TrendsPage() {
                     : 'text-slate-600 hover:bg-slate-50'
                 }`}
               >
-                {item}
+                {PERIOD_LABEL[item]}
               </button>
             ))}
           </div>
           <button
             type="button"
-            onClick={reload}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur transition-all hover:bg-white hover:shadow"
+            onClick={onFetchRange}
+            disabled={refreshing}
+            className="rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-3.5 py-2 text-sm font-medium text-white shadow-md shadow-sky-500/25 transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <path d="M21 12a9 9 0 1 1-3-6.7L21 8"/>
-              <path d="M21 3v5h-5"/>
-            </svg>
-            Refresh
+            {refreshing ? 'Fetching source…' : `Fetch ${PERIOD_LABEL[period]} data`}
           </button>
         </div>
       </div>
+
+      {refreshMessage ? <StatusBanner tone={refreshMessage.tone} title={refreshMessage.title} /> : null}
 
       {loading && !data ? <LoadingBlock label="Loading trends…" /> : null}
       {error ? (
@@ -118,14 +138,14 @@ export function TrendsPage() {
 
       {data && metric === 'risk_score' ? (
         <StatusBanner tone="info" title="Risk scores are discrete evaluation points">
-          The chart only shows results already written to risk_evaluations. If only one evaluation has run, the 7-day window may contain a single point — this is not a continuous forecast curve.
+          Risk score is calculated once for every calendar day containing observations. This is a historical daily assessment, not a continuous forecast curve.
         </StatusBanner>
       ) : null}
 
       {data && !error && points.length === 0 ? (
         <EmptyBlock title="No drawable points for this period">
           {metric === 'risk_score'
-            ? 'Run the evaluation pipeline first, or trigger a Demo refresh on the Transparency page.'
+            ? 'No risk evaluation is stored for this period yet.'
             : 'No valid observations in this window.'}
         </EmptyBlock>
       ) : null}

@@ -30,10 +30,10 @@ BASE_QUALITY = {
 }
 
 
-def test_normal_conditions_low_risk(thresholds):
+def test_untriggered_conditions_still_get_continuous_score(thresholds):
     result = evaluate(BASE_FEATURES, BASE_QUALITY, thresholds)
-    assert result["risk_score"] == 0
-    assert result["risk_level"] == "Low"
+    assert result["risk_score"] == 52.6
+    assert result["risk_level"] == "Medium"
     assert result["confidence"] == 1.0
     assert result["triggers"] == []
     # level recommendations always present for all audiences
@@ -41,13 +41,14 @@ def test_normal_conditions_low_risk(thresholds):
     assert all(result["recommendations"].values())
 
 
-def test_dry_spell_triggers_medium(thresholds):
+def test_dry_spell_increases_continuous_score(thresholds):
     features = {**BASE_FEATURES, "rainfall_72h_mm": 1.0, "rain_days_7d": 0}
     result = evaluate(features, BASE_QUALITY, thresholds)
     ids = {t["id"] for t in result["triggers"]}
     assert {"dry_72h", "dry_7d_baseline"} <= ids
-    assert result["risk_score"] == 35
-    assert result["risk_level"] == "Medium"
+    assert result["risk_score"] == 68.0
+    assert result["risk_level"] == "High"
+    assert result["risk_score"] > evaluate(BASE_FEATURES, BASE_QUALITY, thresholds)["risk_score"]
 
 
 def test_dry_72h_boundary_is_inclusive(thresholds):
@@ -60,15 +61,14 @@ def test_dry_72h_boundary_is_inclusive(thresholds):
 def test_high_risk_combo(thresholds):
     features = {
         **BASE_FEATURES,
-        "rainfall_72h_mm": 1.0,
+        "rainfall_72h_mm": 0.0,
         "rain_days_7d": 0,
-        "temp_max_24h_c": 33.0,
+        "temp_max_24h_c": 35.0,
         "humidity_min_24h_pct": 30.0,
         "wind_gust_max_24h_ms": 12.0,
     }
     result = evaluate(features, BASE_QUALITY, thresholds)
-    # dry_72h(25) + dry_7d(10) + hot_and_dry(25) + hot_exposure(10) + windy_and_hot(10)
-    assert result["risk_score"] == 80
+    assert result["risk_score"] == 100.0
     assert result["risk_level"] == "High"
 
 
@@ -78,8 +78,8 @@ def test_rain_burst_is_preparedness_not_stress(thresholds):
     burst = [t for t in result["triggers"] if t["id"] == "rain_burst_1h"]
     assert burst and burst[0]["scope"] == "burst"
     assert result["burst_alert"] is True
-    assert result["risk_score"] == 0            # burst adds no stress points
-    assert result["risk_level"] == "Low"
+    assert result["risk_score"] == 52.6         # burst itself adds no score
+    assert result["risk_level"] == "Medium"
     # burst recommendation propagated to all audiences
     assert any("storage" in r or "drainage" in r for r in result["recommendations"]["managers"])
 

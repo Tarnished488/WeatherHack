@@ -1,33 +1,12 @@
-import { useCallback, useState } from 'react'
-import { getTransparency, postRefresh } from '../api/client'
-import { ErrorBlock, LoadingBlock, StatusBanner } from '../components/StatusBanner'
-import { describeField, errorMessage, formatFieldLabel, formatNumber, LEVEL_LABEL, t } from '../lib/format'
+import { useCallback } from 'react'
+import { getTransparency } from '../api/client'
+import { ErrorBlock, LoadingBlock } from '../components/StatusBanner'
+import { describeField, errorMessage, formatFieldLabel, formatNumber, t } from '../lib/format'
 import { useApi } from '../lib/useApi'
 
 export function TransparencyPage() {
   const loader = useCallback(() => getTransparency(), [])
   const { data, error, loading, reload } = useApi(loader)
-  const [refreshing, setRefreshing] = useState(false)
-  const [refreshNote, setRefreshNote] = useState<string | null>(null)
-
-  async function onRefresh() {
-    if (!window.confirm('Re-evaluate observations in the current database? This is a Demo-only action and will write a new evaluation.')) {
-      return
-    }
-    setRefreshing(true)
-    setRefreshNote(null)
-    try {
-      const result = await postRefresh()
-      setRefreshNote(
-        `Evaluation complete: ${LEVEL_LABEL[result.evaluation.risk_level]} / Score ${result.evaluation.risk_score}, rules ${result.evaluation.rules_version}`,
-      )
-      reload()
-    } catch (err) {
-      setRefreshNote(err instanceof Error ? err.message : String(err))
-    } finally {
-      setRefreshing(false)
-    }
-  }
 
   if (loading && !data) return <LoadingBlock label="Loading data transparency…" />
   if (error) {
@@ -39,50 +18,14 @@ export function TransparencyPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Data Transparency</h1>
           <p className="mt-1 text-sm text-slate-500">
             For judges to verify the Conduit fields actually used, the cleaning policy, and the rule version.
           </p>
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={reload}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white/80 px-4 py-2 text-sm font-medium text-slate-700 shadow-sm backdrop-blur transition-all hover:bg-white hover:shadow"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>
-            </svg>
-            Refresh
-          </button>
-          <button
-            type="button"
-            onClick={onRefresh}
-            disabled={refreshing}
-            className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-md shadow-sky-500/25 transition-all hover:shadow-lg hover:shadow-sky-500/30 disabled:opacity-50"
-          >
-            {refreshing ? (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 animate-spin">
-                  <path d="M21 12a9 9 0 1 1-6.2-8.5"/>
-                </svg>
-                Refreshing…
-              </>
-            ) : (
-              <>
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-                  <path d="M4 7V4h16v3"/><path d="M9 20h6"/><path d="M12 4v16"/>
-                </svg>
-                Demo Re-evaluate
-              </>
-            )}
-          </button>
-        </div>
       </div>
-
-      {refreshNote ? <StatusBanner tone="info" title={refreshNote} /> : null}
 
       <section className="rounded-2xl border border-slate-200/60 bg-white/80 p-6 shadow-lg shadow-slate-900/5 backdrop-blur">
         <div className="mb-4 flex items-center gap-2">
