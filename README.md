@@ -277,8 +277,8 @@ This project was built with the assistance of AI coding tools (code generation, 
 ## 15. Team
 
 - **Backend & risk engine** — Tarnished488 ([@Tarnished488](https://github.com/Tarnished488))
-- **Data pipeline & Conduit integration** — *(add teammate)*
-- **Frontend dashboard** — *(add teammate)*
+- **Data pipeline & Conduit integration** — ([@Xiang669](https://github.com/Xiang669))
+- **Frontend dashboard** — *([@BabyX1an](https://github.com/BabyX1an))
 
 ## 16. Roadmap
 
