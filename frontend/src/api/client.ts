@@ -1,6 +1,7 @@
 import type {
   AlertsResponse,
   Evaluation,
+  LlmAdviceResponse,
   RefreshResponse,
   RiskDistributionResponse,
   TransparencyResponse,
@@ -49,6 +50,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getCurrentRisk(): Promise<Evaluation> {
   return request<Evaluation>('/api/current-risk')
+}
+
+export function getLlmAdvice(force = false): Promise<LlmAdviceResponse> {
+  const query = force ? '?force=true' : ''
+  return request<LlmAdviceResponse>(`/api/llm-advice${query}`)
 }
 
 export function getTrends(

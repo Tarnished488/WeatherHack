@@ -158,3 +158,23 @@ export interface RefreshResponse {
   evaluation: Evaluation
   daily_evaluations?: number
 }
+
+export type AdviceSource = 'llm' | 'llm-cache' | 'template'
+
+export interface RoleAdvice {
+  summary: string
+  actions: string[]
+}
+
+export interface LlmAdviceResponse {
+  enabled: boolean
+  source: AdviceSource
+  model?: string
+  degraded?: boolean
+  detail?: string
+  message?: string
+  window_end_utc: string
+  risk_score: number
+  risk_level: RiskLevel
+  advice: Record<AudienceRole, RoleAdvice>
+}
