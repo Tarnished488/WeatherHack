@@ -170,14 +170,24 @@ def test_parse_advice_rejects_invalid_payloads(content):
         parse_advice(content)
 
 
-def test_load_llm_config_disabled_without_key(monkeypatch):
+def test_load_llm_config_disabled_until_key_provided(monkeypatch):
+    """The key placeholder ships empty; the layer stays disabled until the
+    teammate fills DEMO_API_KEY (or exports MAJIGUARD_DEEPSEEK_API_KEY)."""
     for var in ("MAJIGUARD_DEEPSEEK_API_KEY", "MAJIGUARD_DEEPSEEK_BASE_URL",
                 "MAJIGUARD_DEEPSEEK_MODEL", "MAJIGUARD_LLM_TIMEOUT_SECONDS"):
         monkeypatch.delenv(var, raising=False)
     cfg = load_llm_config()
     assert cfg["enabled"] is False
+    assert cfg["api_key"] == ""
     assert cfg["base_url"] == "https://api.deepseek.com"
     assert cfg["model"] == "deepseek-chat"
+
+
+def test_load_llm_config_env_enables_layer(monkeypatch):
+    monkeypatch.setenv("MAJIGUARD_DEEPSEEK_API_KEY", "sk-override")
+    cfg = load_llm_config()
+    assert cfg["api_key"] == "sk-override"
+    assert cfg["enabled"] is True
 
 
 # ---------------------------------------------------------------------------

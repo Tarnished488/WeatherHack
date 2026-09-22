@@ -277,7 +277,7 @@ def create_app() -> FastAPI:
     @app.get("/api/risk-distribution")
     def risk_distribution(
         period: str = Query("week", description="day|week|month|three_months"),
-        at: str | None = Query(None, description="区间结束 UTC 时间；默认使用最新观测"),
+        at: str | None = Query(None, description="Range end in UTC; defaults to the latest observation"),
         conn=Depends(get_db),
     ):
         """Daily High/Medium/Low probabilities for the selected time range."""
@@ -522,24 +522,24 @@ def create_app() -> FastAPI:
     # ------------------------------------------------------------------
     @app.post("/api/refresh")
     def refresh(
-        source: str | None = Query(None, description="Demo：本地 CSV/目录路径"),
-        fromdate: str | None = Query(None, description="Conduit 起始日期，例如 2026-09-01"),
-        todate: str | None = Query(None, description="Conduit 结束日期，例如 2026-09-02"),
-        window: str | None = Query(None, description="Conduit 数据窗口：day|week|month|three_months"),
+        source: str | None = Query(None, description="Demo: local CSV file or directory path"),
+        fromdate: str | None = Query(None, description="Conduit start date, e.g. 2026-09-01"),
+        todate: str | None = Query(None, description="Conduit end date, e.g. 2026-09-02"),
+        window: str | None = Query(None, description="Conduit data window: day|week|month|three_months"),
         conn=Depends(get_db),
     ):
-        """刷新风险：本地 CSV Demo 或受保护的 Conduit POST 拉取。"""
+        """Refresh risk: local CSV demo or protected Conduit POST pull."""
         if source and (fromdate or todate or window):
-            raise HTTPException(status_code=400, detail="source 不能与 Conduit 日期或 window 同时使用")
+            raise HTTPException(status_code=400, detail="source cannot be combined with Conduit dates or window")
         if window and (fromdate or todate):
-            raise HTTPException(status_code=400, detail="window 不能与 fromdate/todate 同时使用")
+            raise HTTPException(status_code=400, detail="window cannot be combined with fromdate/todate")
         if window:
             try:
                 fromdate, todate = refresh_dates_for_window(window)
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
         elif bool(fromdate) != bool(todate):
-            raise HTTPException(status_code=400, detail="fromdate 和 todate 必须同时提供")
+            raise HTTPException(status_code=400, detail="fromdate and todate must be provided together")
         if fromdate and todate:
             try:
                 refreshed = refresh_from_conduit(conn, fromdate, todate)
