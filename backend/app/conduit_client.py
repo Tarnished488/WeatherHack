@@ -1,7 +1,12 @@
 """Authenticated Conduit POST client.
 
-Credentials are intentionally read only from environment variables.  This
-module is used by the backend refresh service; the browser never sees them.
+The endpoint URL is public (official Conduit docs) and defaults to
+https://conduit.jhubafrica.com/data.php; override it with the
+MAJIGUARD_CONDUIT_ENDPOINT environment variable if it ever moves.
+The API key and team email are secrets and are read ONLY from environment
+variables (MAJIGUARD_CONDUIT_API_KEY, MAJIGUARD_CONDUIT_EMAIL) — they are
+never hardcoded or committed.  This module is used by the backend refresh
+service; the browser never sees the credentials.
 """
 from __future__ import annotations
 
@@ -11,6 +16,8 @@ from dataclasses import dataclass
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
+
+DEFAULT_ENDPOINT = "https://conduit.jhubafrica.com/data.php"
 
 
 class ConduitClientError(RuntimeError):
@@ -33,16 +40,16 @@ def _required_env(name: str) -> str:
 def fetch_conduit_payload(fromdate: str, todate: str, timeout_seconds: float = 30.0) -> ConduitPayload:
     """POST a date range to Conduit and return its JSON body.
 
-    Expected environment variables:
-    MAJIGUARD_CONDUIT_ENDPOINT, MAJIGUARD_CONDUIT_API_KEY,
-    MAJIGUARD_CONDUIT_EMAIL.
+    Required environment variables:
+    MAJIGUARD_CONDUIT_API_KEY, MAJIGUARD_CONDUIT_EMAIL.
+    Optional: MAJIGUARD_CONDUIT_ENDPOINT (defaults to the official URL).
     """
     if fromdate > todate:
         raise ConduitClientError("fromdate cannot be later than todate")
     if timeout_seconds <= 0:
         raise ConduitClientError("timeout_seconds must be greater than zero")
 
-    endpoint = _required_env("MAJIGUARD_CONDUIT_ENDPOINT")
+    endpoint = (os.environ.get("MAJIGUARD_CONDUIT_ENDPOINT") or DEFAULT_ENDPOINT).strip()
     form_data = urlencode({
         "apikey": _required_env("MAJIGUARD_CONDUIT_API_KEY"),
         "email": _required_env("MAJIGUARD_CONDUIT_EMAIL"),

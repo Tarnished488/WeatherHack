@@ -13,8 +13,9 @@ Run:
 CORS: allow_origins defaults to "*" for the hackathon demo; restrict it via
 the MAJIGUARD_CORS_ORIGINS env var (comma-separated) before real deployment.
     Database path can be overridden with MAJIGUARD_DB.  Live Conduit refresh
-    additionally needs MAJIGUARD_CONDUIT_ENDPOINT, MAJIGUARD_CONDUIT_API_KEY,
-    and MAJIGUARD_CONDUIT_EMAIL.
+    additionally needs MAJIGUARD_CONDUIT_API_KEY and MAJIGUARD_CONDUIT_EMAIL
+    (the endpoint URL defaults to the official Conduit address; override with
+    MAJIGUARD_CONDUIT_ENDPOINT).
 """
 from __future__ import annotations
 
