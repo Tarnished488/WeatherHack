@@ -145,44 +145,75 @@ export function DashboardPage() {
 
       <NationalRiskOverview evaluation={data} refreshKey={distributionRefreshKey} />
 
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <section className="space-y-5 rounded-2xl border border-slate-200/60 bg-white/80 p-6 shadow-lg shadow-slate-900/5 backdrop-blur">
-          <RiskBadge level={data.risk_level} score={data.risk_score} />
-          <div className="grid gap-4 rounded-xl bg-slate-50/60 p-4 text-sm text-slate-600 sm:grid-cols-2">
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Latest observation</dt>
-              <dd className="mt-0.5 font-medium text-slate-800">{formatUtc(quality?.latest_observed_at_utc)}</dd>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] lg:items-start">
+        <div className="space-y-6">
+          <section className="rounded-2xl border border-slate-200/60 bg-white/80 p-6 shadow-lg shadow-slate-900/5 backdrop-blur">
+            <RiskBadge level={data.risk_level} score={data.risk_score} />
+            <div className="mt-5">
+              <div className="relative h-2.5 overflow-hidden rounded-full bg-gradient-to-r from-emerald-400 via-amber-400 to-rose-500">
+                <div
+                  className="absolute inset-y-0 w-1 rounded-full bg-slate-900 shadow"
+                  style={{ left: `calc(${Math.min(Math.max(data.risk_score, 0), 100)}% - 2px)` }}
+                />
+              </div>
+              <div className="mt-1.5 flex justify-between text-[10px] font-medium uppercase tracking-wide text-slate-400">
+                <span>Low 0</span>
+                <span>Medium 33</span>
+                <span>High 67</span>
+                <span>100</span>
+              </div>
             </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Evaluated at</dt>
-              <dd className="mt-0.5 font-medium text-slate-800">{formatUtc(data.evaluated_at_utc)}</dd>
+            <div className="mt-5 grid gap-4 rounded-xl bg-slate-50/60 p-4 text-sm text-slate-600 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Latest observation</dt>
+                <dd className="mt-0.5 font-medium text-slate-800">{formatUtc(quality?.latest_observed_at_utc)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Evaluated at</dt>
+                <dd className="mt-0.5 font-medium text-slate-800">{formatUtc(data.evaluated_at_utc)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Rules version</dt>
+                <dd className="mt-0.5 font-mono text-xs text-slate-700">{data.rules_version}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Confidence</dt>
+                <dd className="mt-1">
+                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full bg-gradient-to-r from-sky-500 to-indigo-600 transition-all duration-700"
+                      style={{ width: `${Math.round(data.confidence * 100)}%` }}
+                    />
+                  </div>
+                  <span className="mt-1 inline-block font-mono text-xs font-semibold text-slate-700">{formatNumber(data.confidence, 2)}</span>
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">24h coverage</dt>
+                <dd className="mt-0.5 font-medium text-slate-800">{formatNumber((quality?.coverage_24h ?? 0) * 100, 0)} %</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">24h samples</dt>
+                <dd className="mt-0.5 font-medium text-slate-800">{formatNumber(quality?.sample_count_24h, 0)}</dd>
+              </div>
             </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Rules version</dt>
-              <dd className="mt-0.5 font-mono text-xs text-slate-700">{data.rules_version}</dd>
+          </section>
+
+          <section className="rounded-2xl border border-slate-200/60 bg-white/80 p-6 shadow-lg shadow-slate-900/5 backdrop-blur">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-rose-500 text-white">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                  <path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                </svg>
+              </div>
+              <div>
+                <h2 className="text-base font-semibold text-slate-900">Top Risk Drivers</h2>
+                <p className="text-[11px] text-slate-400">Weighted rules behind the current score</p>
+              </div>
             </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">Confidence</dt>
-              <dd className="mt-1">
-                <div className="h-2.5 overflow-hidden rounded-full bg-slate-200">
-                  <div
-                    className="h-full bg-gradient-to-r from-sky-500 to-indigo-600 transition-all duration-700"
-                    style={{ width: `${Math.round(data.confidence * 100)}%` }}
-                  />
-                </div>
-                <span className="mt-1 inline-block font-mono text-xs font-semibold text-slate-700">{formatNumber(data.confidence, 2)}</span>
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">24h coverage</dt>
-              <dd className="mt-0.5 font-medium text-slate-800">{formatNumber((quality?.coverage_24h ?? 0) * 100, 0)} %</dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium uppercase tracking-wide text-slate-400">24h samples</dt>
-              <dd className="mt-0.5 font-medium text-slate-800">{formatNumber(quality?.sample_count_24h, 0)}</dd>
-            </div>
-          </div>
-        </section>
+            <TriggerList triggers={stress} />
+          </section>
+        </div>
         <AdvicePanel evaluation={data} role={role} onRoleChange={setRole} />
       </div>
 
@@ -264,18 +295,6 @@ export function DashboardPage() {
             accent="slate"
           />
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-slate-200/60 bg-white/80 p-6 shadow-lg shadow-slate-900/5 backdrop-blur">
-        <div className="mb-3 flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500 to-rose-500 text-white">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-            </svg>
-          </div>
-          <h2 className="text-base font-semibold text-slate-900 sm:text-lg">Top Risk Drivers</h2>
-        </div>
-        <TriggerList triggers={stress} />
       </section>
     </div>
   )
