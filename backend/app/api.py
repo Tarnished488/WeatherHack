@@ -24,6 +24,7 @@ from datetime import timedelta
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from .config import load_thresholds
 from .db import DEFAULT_DB_PATH, connect, ensure_schema
@@ -32,9 +33,24 @@ from .ingest import VALIDATION_RANGES, ingest_csv
 from .pipeline import run_daily_evaluations, run_evaluation
 from .conduit_client import ConduitClientError
 from .refresh_service import refresh_from_conduit
+from .llm import public_provider_list
 from .llm import service as llm_service
 
 API_DB_PATH = os.environ.get("MAJIGUARD_DB", str(DEFAULT_DB_PATH))
+
+
+class LlmAdviceRequest(BaseModel):
+    """Bring-your-own-key flexible-advice request.
+
+    ``api_key`` is the visitor's own provider key.  FastAPI never logs the
+    body, the service never persists it, and it is excluded from every
+    response payload.
+    """
+
+    provider: str
+    api_key: str
+    model: str | None = None
+
 CORS_ORIGINS = [
     o.strip() for o in os.environ.get("MAJIGUARD_CORS_ORIGINS", "*").split(",") if o.strip()
 ]
@@ -181,7 +197,7 @@ def create_app() -> FastAPI:
     def root():
         return {"service": "MajiGuard API", "docs": "/docs",
                 "endpoints": ["/api/current-risk", "/api/trends", "/api/risk-distribution", "/api/alerts",
-                              "/api/llm-advice", "/api/data-transparency", "/api/refresh"]}
+                              "/api/llm-providers", "/api/llm-advice", "/api/data-transparency", "/api/refresh"]}
 
     # ------------------------------------------------------------------
     @app.get("/api/current-risk")
@@ -432,6 +448,70 @@ def create_app() -> FastAPI:
         return {
             "enabled": True,
             "source": result["source"],
+            "model": result["model"],
+            "window_end_utc": evaluation["window_end_utc"],
+            "risk_score": evaluation["risk_score"],
+            "risk_level": evaluation["risk_level"],
+            "advice": result["advice"],
+        }
+
+    # ------------------------------------------------------------------
+    @app.get("/api/llm-providers")
+    def llm_providers():
+        """Catalog for the frontend model picker (bring-your-own-key flow)."""
+        return {"providers": public_provider_list()}
+
+    @app.post("/api/llm-advice")
+    def llm_advice_byok(payload: LlmAdviceRequest, conn=Depends(get_db)):
+        """Flexible advice generated with a VISITOR-SUPPLIED provider key.
+
+        Bring-your-own-key: the request carries the provider id and the
+        visitor's own API key.  The key is held in memory for this request
+        only - never logged, cached, or persisted - so a public deployment
+        never spends the team's tokens on behalf of others.
+
+        Provider failures return HTTP 200 with ``source: "error"`` and a
+        stable ``error_kind`` (invalid_api_key / insufficient_balance /
+        rate_limited / timeout / network_error / provider_error) plus an
+        English ``error_message``; the UI renders its own localized copy
+        and keeps showing the rule-engine templates.
+        """
+        try:
+            provider = llm_service.get_provider(payload.provider)
+        except KeyError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if not payload.api_key or not payload.api_key.strip():
+            raise HTTPException(status_code=400, detail="api_key is required")
+
+        row = _latest_evaluation_row(conn)
+        if row is None:
+            raise HTTPException(status_code=404,
+                                detail="No evaluation yet; call /api/current-risk first")
+        evaluation = _evaluation_payload(row)
+        evaluation.pop("recommendations", None)
+        evaluation.pop("site", None)
+
+        result = llm_service.generate_advice_byok(
+            conn, evaluation, payload.provider, payload.api_key, payload.model,
+        )
+        if result["source"] == "error":
+            return {
+                "source": "error",
+                "provider": result["provider"],
+                "provider_label": result["provider_label"],
+                "model": result["model"],
+                "error_kind": result["error_kind"],
+                "error_message": result["error_message"],
+                "detail": result.get("detail"),
+                "window_end_utc": evaluation["window_end_utc"],
+                "risk_score": evaluation["risk_score"],
+                "risk_level": evaluation["risk_level"],
+                "advice": None,
+            }
+        return {
+            "source": result["source"],
+            "provider": result["provider"],
+            "provider_label": result["provider_label"],
             "model": result["model"],
             "window_end_utc": evaluation["window_end_utc"],
             "risk_score": evaluation["risk_score"],

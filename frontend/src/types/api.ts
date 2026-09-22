@@ -178,3 +178,41 @@ export interface LlmAdviceResponse {
   risk_level: RiskLevel
   advice: Record<AudienceRole, RoleAdvice>
 }
+
+// --- Bring-your-own-key (BYOK) flexible advice -----------------------------
+
+export type AdviceErrorKind =
+  | 'invalid_api_key'
+  | 'insufficient_balance'
+  | 'rate_limited'
+  | 'timeout'
+  | 'network_error'
+  | 'provider_error'
+  | 'bad_response'
+
+export interface LlmProviderInfo {
+  id: string
+  label: string
+  default_model: string
+  key_hint: string
+}
+
+export interface ByokAdviceRequest {
+  provider: string
+  api_key: string
+  model?: string
+}
+
+export interface ByokAdviceResponse {
+  source: 'llm' | 'error'
+  provider: string
+  provider_label: string
+  model: string
+  window_end_utc: string
+  risk_score: number
+  risk_level: RiskLevel
+  error_kind?: AdviceErrorKind
+  error_message?: string
+  detail?: string
+  advice: Record<AudienceRole, RoleAdvice> | null
+}

@@ -1,7 +1,10 @@
 import type {
   AlertsResponse,
+  ByokAdviceRequest,
+  ByokAdviceResponse,
   Evaluation,
   LlmAdviceResponse,
+  LlmProviderInfo,
   RefreshResponse,
   RiskDistributionResponse,
   TransparencyResponse,
@@ -55,6 +58,18 @@ export function getCurrentRisk(): Promise<Evaluation> {
 export function getLlmAdvice(force = false): Promise<LlmAdviceResponse> {
   const query = force ? '?force=true' : ''
   return request<LlmAdviceResponse>(`/api/llm-advice${query}`)
+}
+
+export function getLlmProviders(): Promise<{ providers: LlmProviderInfo[] }> {
+  return request<{ providers: LlmProviderInfo[] }>('/api/llm-providers')
+}
+
+export function postLlmAdvice(payload: ByokAdviceRequest): Promise<ByokAdviceResponse> {
+  return request<ByokAdviceResponse>('/api/llm-advice', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  })
 }
 
 export function getTrends(

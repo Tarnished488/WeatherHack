@@ -22,10 +22,33 @@ class LLMAdvisorError(ValueError):
     """Raised when the LLM response cannot be parsed into valid advice."""
 
 
+def extract_json_object(content: str) -> str:
+    """Pull the first JSON object out of a model reply.
+
+    Providers without a strict JSON mode (and chatty models in general) may
+    wrap the payload in markdown fences or add prose.  We deliberately do
+    not send ``response_format: json_object`` to every provider because the
+    flag is not portable across the registry; this tolerant extraction is
+    the portable equivalent.
+    """
+    text = (content or "").strip()
+    if text.startswith("```"):
+        first_newline = text.find("\n")
+        if first_newline != -1:
+            text = text[first_newline + 1 :]
+        if text.rstrip().endswith("```"):
+            text = text.rstrip()[:-3]
+        text = text.strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        return text[start : end + 1]
+    return text
+
+
 def parse_advice(content: str) -> dict:
     """Validate the model output: one summary + short action list per role."""
     try:
-        data = json.loads(content)
+        data = json.loads(extract_json_object(content))
     except (TypeError, ValueError) as exc:
         raise LLMAdvisorError(f"advice is not valid JSON: {exc}") from exc
     if not isinstance(data, dict):

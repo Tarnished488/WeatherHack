@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { getCurrentRisk, getLlmAdvice, postRefresh } from '../api/client'
+import { getCurrentRisk, postRefresh } from '../api/client'
 import { AdvicePanel } from '../components/AdvicePanel'
 import { MetricCard } from '../components/MetricCard'
 import { NationalRiskOverview } from '../components/NationalRiskOverview'
@@ -14,7 +14,7 @@ import {
   topStressTriggers,
 } from '../lib/format'
 import { useApi } from '../lib/useApi'
-import type { AudienceRole, LlmAdviceResponse } from '../types/api'
+import type { AudienceRole } from '../types/api'
 
 export function DashboardPage() {
   const loader = useCallback(() => getCurrentRisk(), [])
@@ -26,41 +26,14 @@ export function DashboardPage() {
   const [distributionRefreshKey, setDistributionRefreshKey] = useState(0)
   const [refreshMessage, setRefreshMessage] = useState<{ tone: 'info' | 'error'; title: string } | null>(null)
 
-  // Flexible AI advice: fetched for the current evaluation window. The endpoint
-  // never hard-fails (it falls back to rule templates server-side), so any
-  // network hiccup simply keeps the rule-based rendering.
-  const [llmAdvice, setLlmAdvice] = useState<LlmAdviceResponse | null>(null)
-  const [adviceLoading, setAdviceLoading] = useState(false)
-  const [regenerating, setRegenerating] = useState(false)
-  const loadAdvice = useCallback(async (force = false) => {
-    if (force) setRegenerating(true)
-    else setAdviceLoading(true)
-    try {
-      setLlmAdvice(await getLlmAdvice(force))
-    } catch {
-      setLlmAdvice(null)
-    } finally {
-      setAdviceLoading(false)
-      setRegenerating(false)
-    }
-  }, [])
-
-  // Re-fetch whenever a new evaluation window appears (poll / manual refresh).
-  const windowEnd = data?.window_end_utc
-  useEffect(() => {
-    if (windowEnd) void loadAdvice()
-  }, [windowEnd, loadAdvice])
-
   // The backend owns data ingestion and risk calculation. The UI polls only
   // the read endpoint, so a page visit never exposes Conduit credentials or
-  // triggers duplicate ingestion.
+  // triggers duplicate ingestion.  AI advice is bring-your-own-key and lives
+  // entirely inside <AdvicePanel />; the dashboard stays out of it.
   useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      reload()
-      void loadAdvice()
-    }, 30_000)
+    const intervalId = window.setInterval(reload, 30_000)
     return () => window.clearInterval(intervalId)
-  }, [reload, loadAdvice])
+  }, [reload])
 
   async function onFetchLatestData() {
     if (!fromDate || !toDate) {
@@ -78,7 +51,6 @@ export function DashboardPage() {
       })
       reload()
       setDistributionRefreshKey((key) => key + 1)
-      void loadAdvice()
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err)
       setRefreshMessage({ tone: 'error', title: `Source refresh failed: ${detail}` })
@@ -211,15 +183,7 @@ export function DashboardPage() {
             </div>
           </div>
         </section>
-        <AdvicePanel
-          evaluation={data}
-          llmAdvice={llmAdvice}
-          adviceLoading={adviceLoading}
-          role={role}
-          onRoleChange={setRole}
-          onRegenerate={() => void loadAdvice(true)}
-          regenerating={regenerating}
-        />
+        <AdvicePanel evaluation={data} role={role} onRoleChange={setRole} />
       </div>
 
       {burst.map((trigger) => (
