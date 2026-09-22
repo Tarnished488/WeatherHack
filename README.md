@@ -268,6 +268,20 @@ npm install
 npm run dev                      # http://localhost:5173 (proxies /api to the backend)
 ```
 
+**Helper scripts (macOS / Linux):**
+
+```bash
+./scripts/dev.sh                 # backend (background) + frontend (foreground) together
+./scripts/stop.sh                # stop both
+./scripts/restart-backend.sh     # restart only the API, leave the frontend running
+```
+
+`dev.sh` picks the interpreter from `.venv` at the repo root or `backend/.venv` (either layout works), runs `npm install` if `node_modules` is missing, and waits until the API answers before starting Vite. Ctrl-C stops both — but a backend that was already running before the script is left alone.
+
+`stop.sh` stops both. It finds the frontend by its path in this repo rather than by port, so dev servers belonging to other projects on your machine are left alone (Vite moves to 5174, 5175, … when 5173 is taken). It stops them whoever started them — these scripts, or a terminal you have since closed.
+
+`restart-backend.sh` stops whatever holds port 8000 and starts uvicorn again in the background, which is handy while iterating on backend code. All three log to `logs/backend.log` (follow it with `tail -f logs/backend.log`).
+
 The first call to `GET /api/current-risk` automatically computes and persists an evaluation if the database has observations but no evaluation yet.
 
 ## 10. API endpoints
