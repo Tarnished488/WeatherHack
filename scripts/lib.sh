@@ -134,6 +134,15 @@ start_backend() {
   mkdir -p "$LOG_DIR"
   (
     cd "$BACKEND_DIR"
+    if [[ -f .env ]]; then
+      # Export every assignment in the local .env file only to this backend
+      # process. The file is intentionally ignored by Git because it may
+      # contain provider keys and other local credentials.
+      set -a
+      source .env
+      set +a
+      echo "Loaded backend configuration from $BACKEND_DIR/.env"
+    fi
     nohup "$py" -m app.api >>"$BACKEND_LOG" 2>&1 &
     echo $! >"$BACKEND_PID_FILE"
   )
