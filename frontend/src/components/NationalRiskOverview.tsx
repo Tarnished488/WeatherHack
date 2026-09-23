@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, type ReactNode } from 'react'
 import {
   CartesianGrid,
   Cell,
@@ -67,7 +67,7 @@ function KenyaRiskMap({ evaluation }: { evaluation: Evaluation }) {
   const riskColor = RISK_COLORS[evaluation.risk_level]
 
   return (
-    <div className="relative min-h-[430px] overflow-hidden rounded-2xl bg-gradient-to-br from-sky-50 via-white to-emerald-50/60">
+    <div className="relative min-h-[430px] overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50 via-[#fffaf0] to-stone-100/80">
       <svg viewBox="0 0 420 480" className="h-[430px] w-full" role="img" aria-label={`Kenya risk map showing ${site.name} in ${site.county} County at ${evaluation.risk_level} risk`}>
         <defs>
           <filter id="station-glow" x="-100%" y="-100%" width="300%" height="300%">
@@ -75,8 +75,8 @@ function KenyaRiskMap({ evaluation }: { evaluation: Evaluation }) {
             <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
           <linearGradient id="kenya-fill" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#e0f2fe" />
-            <stop offset="100%" stopColor="#dcfce7" />
+            <stop offset="0%" stopColor="#f8edd7" />
+            <stop offset="100%" stopColor="#e9d1a2" />
           </linearGradient>
         </defs>
         <path d={outline} fill="url(#kenya-fill)" stroke="#64748b" strokeWidth="2.2" strokeLinejoin="round" />
@@ -98,16 +98,15 @@ function KenyaRiskMap({ evaluation }: { evaluation: Evaluation }) {
 
 export function NationalRiskOverview({
   evaluation,
-  refreshKey = 0,
+  guidance,
+  evidence,
 }: {
   evaluation: Evaluation
-  refreshKey?: number
+  guidance: ReactNode
+  evidence: ReactNode
 }) {
   const distributionLoader = useCallback(() => getRiskDistribution('week'), [])
   const { data: distributionData, error: distributionError, loading: distributionLoading, reload: reloadDistribution } = useApi(distributionLoader)
-  useEffect(() => {
-    if (refreshKey > 0) reloadDistribution()
-  }, [refreshKey, reloadDistribution])
   useEffect(() => {
     const intervalId = window.setInterval(reloadDistribution, 30_000)
     return () => window.clearInterval(intervalId)
@@ -123,13 +122,13 @@ export function NationalRiskOverview({
   return (
     <section className="space-y-4">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700">National monitoring</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-amber-800">National monitoring</p>
         <h2 className="mt-1 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">Kenya Water Risk Map</h2>
         <p className="mt-1 text-sm text-slate-500">Risk colours represent connected monitoring stations. Current coverage contains one verified Conduit station at JKUAT, Kiambu County.</p>
       </div>
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.85fr)]">
-        <div className="rounded-2xl border border-slate-200/60 bg-white/80 p-3 shadow-lg shadow-slate-900/5 backdrop-blur">
+      <div className="grid gap-5 lg:grid-cols-6 lg:items-start">
+        <div className="glass-panel map-atmosphere rounded-2xl border border-slate-200/60 bg-white/80 p-3 shadow-lg shadow-slate-900/5 backdrop-blur lg:col-span-3">
           <KenyaRiskMap evaluation={evaluation} />
           <div className="flex flex-wrap gap-4 px-2 pb-2 pt-3 text-xs font-medium text-slate-600">
             {(['High', 'Medium', 'Low'] as RiskLevel[]).map((level) => (
@@ -141,8 +140,15 @@ export function NationalRiskOverview({
           </div>
         </div>
 
-        <div className="grid gap-5">
-          <div className="rounded-2xl border border-slate-200/60 bg-white/80 p-5 shadow-lg shadow-slate-900/5 backdrop-blur">
+        {guidance}
+
+        <section className="glass-panel h-full rounded-2xl border border-slate-200/60 bg-white/70 p-5 shadow-lg shadow-slate-900/5 backdrop-blur lg:col-span-4 lg:col-start-1 lg:self-stretch">
+          <div>
+            <h3 className="font-semibold text-slate-900">Risk pattern</h3>
+            <p className="mt-1 text-xs text-slate-500">Weekly distribution and daily index for the latest monitoring period.</p>
+          </div>
+          <div className="mt-4 grid gap-5 sm:grid-cols-2">
+          <div className="inner-surface rounded-2xl border border-slate-200/60 bg-white/80 p-5 shadow-lg shadow-slate-900/5 backdrop-blur">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="font-semibold text-slate-900">Weekly risk distribution</h3>
@@ -172,7 +178,7 @@ export function NationalRiskOverview({
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-200/60 bg-white/80 p-5 shadow-lg shadow-slate-900/5 backdrop-blur">
+          <div className="inner-surface rounded-2xl border border-slate-200/60 bg-white/80 p-5 shadow-lg shadow-slate-900/5 backdrop-blur">
             <h3 className="font-semibold text-slate-900">Daily risk score</h3>
             <p className="mt-1 text-xs text-slate-500">0–100 water-risk index for each day in the latest week</p>
             {dailyScores.length ? (
@@ -194,6 +200,11 @@ export function NationalRiskOverview({
               <p className="mt-4 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-500">No daily risk scores are available for this week.</p>
             )}
           </div>
+          </div>
+        </section>
+
+        <div className="h-full lg:col-span-2 lg:col-start-5 lg:self-stretch">
+          {evidence}
         </div>
       </div>
     </section>

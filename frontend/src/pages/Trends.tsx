@@ -88,13 +88,13 @@ export function TrendsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">Trends</h1>
-          <p className="mt-1 text-sm text-slate-500">Day is aggregated hourly; week, month, and three months are aggregated daily. The endpoint anchors on the newest stored observation.</p>
+          <p className="mt-1 text-sm text-slate-500">Day is aggregated hourly; week and month are aggregated daily. The endpoint anchors on the newest stored observation.</p>
         </div>
-        <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto">
           <select
             value={metric}
             onChange={(e) => setMetric(e.target.value as TrendMetric)}
-            className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 text-sm backdrop-blur shadow-sm transition-all hover:shadow focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+            className="rounded-xl border border-amber-900/20 bg-[#fffaf0]/80 px-3 py-2 text-sm backdrop-blur shadow-sm transition-all hover:shadow focus:outline-none focus:ring-2 focus:ring-amber-600/25"
           >
             {TREND_METRICS.map((item) => (
               <option key={item} value={item}>
@@ -110,8 +110,8 @@ export function TrendsPage() {
                 onClick={() => setPeriod(item)}
                 className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition-all ${
                   period === item
-                    ? 'bg-gradient-to-r from-sky-500 to-indigo-600 text-white shadow-md shadow-sky-500/25'
-                    : 'text-slate-600 hover:bg-slate-50'
+                    ? 'bg-gradient-to-r from-amber-700 to-stone-800 text-white shadow-md shadow-amber-900/20'
+                    : 'text-stone-600 hover:bg-amber-50'
                 }`}
               >
                 {PERIOD_LABEL[item]}
@@ -122,7 +122,7 @@ export function TrendsPage() {
             type="button"
             onClick={onFetchRange}
             disabled={refreshing}
-            className="rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 px-3.5 py-2 text-sm font-medium text-white shadow-md shadow-sky-500/25 transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl bg-gradient-to-r from-amber-700 to-stone-800 px-3.5 py-2 text-sm font-medium text-white shadow-md shadow-amber-900/20 transition-all hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
           >
             {refreshing ? 'Fetching source…' : `Fetch ${PERIOD_LABEL[period]} data`}
           </button>
